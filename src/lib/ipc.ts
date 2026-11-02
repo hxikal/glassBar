@@ -9,6 +9,29 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 const own = <T>(name: string, cb: (p: T) => void) => listen<T>(name, (e) => cb(e.payload), { target: getCurrentWindow().label });
 import type { Edge } from './geometry';
 
+/** Send values one at a time, newest wins: values that arrive while one is in flight replace
+ *  each other, and only the last is sent next. `busy()` is true while sending. */
+export function latestOnly<T>(send: (v: T) => Promise<unknown>) {
+  let next: { v: T } | null = null, sending = false;
+  return {
+    async push(v: T) {
+      next = { v };
+      if (sending) return;
+      sending = true;
+      try { while (next) { const { v } = next; next = null; await send(v).catch(() => {}); } } finally { sending = false; }
+    },
+    busy: () => sending,
+  };
+}
+// Volume from a slider or the wheel. Parallel requests could land out of order, so they go one
+// at a time. Windows echoes every step back as audio:changed; while we are still setting (and
+// briefly after), those echoes are older than the level shown and are dropped -- otherwise the
+// level jumps back mid-scroll and the next step starts from the wrong value.
+const volume = latestOnly((v: number) => invoke('audio_set_volume', { volume: v }));
+let volumeAt = -Infinity;
+const VOLUME_ECHO_MS = 300;
+const volumeSettling = () => volume.busy() || performance.now() - volumeAt < VOLUME_ECHO_MS;
+
 export type WidgetSize = 'small' | 'medium' | 'large';
 export interface WidgetInst { id: string; instance: string; size: WidgetSize; settings: any; /** false = off: kept with its settings, not on the dock */ enabled?: boolean }
 export interface BarCfg {
@@ -164,7 +187,8 @@ export interface RadioInfo { kind: 'wifi' | 'bluetooth' | 'other'; name: string;
 export interface Hotspot { on: boolean; ssid: string; clients: number; maxClients: number }
 /** Wireless displays nearby (Miracast) and whether this PC is casting to one now. */
 /** Today's water: total and goal in ml, each drink, the last 7 days (oldest first). */
-export interface WaterToday { total: number; goal: number; cup: number; entries: { at: number; ml: number }[]; week: { day0: number; ml: number }[]; hot: boolean }
+export interface WaterToday { total: number; goal: number; cup: number; entries: { at: number; ml: number }[]; week: { day0: number; ml: number }[]; hot: boolean;
+  /** When the next reminder shows (epoch ms); null when reminders are off or the goal is met. */ nextReminder: number | null }
 export interface CastState { casting: boolean; displays: { id: string; name: string }[] }
 export type DisplayMode = 'internal' | 'clone' | 'extend' | 'external';
 
@@ -336,7 +360,7 @@ export const ipc = {
   jumplist: (exe: string) => invoke<{ name: string; path: string }[]>('jumplist', { exe }),
   // audio
   audioState: () => invoke<AudioState>('audio_state'),
-  audioSetVolume: (volume: number) => invoke<void>('audio_set_volume', { volume }),
+  audioSetVolume: (v: number) => volume.push(v).then(() => { volumeAt = performance.now(); }),
   audioSetMute: (muted: boolean) => invoke<void>('audio_set_mute', { muted }),
   audioSetDefault: (id: string) => invoke<void>('audio_set_default', { id }),
   audioSessions: () => invoke<AudioSession[]>('audio_sessions'),
@@ -457,7 +481,7 @@ export const events = {
   popupHide: (cb: () => void) => listen('popup:hide', () => cb()),
   popupLeave: (cb: () => void) => listen('popup:leave', () => cb()),
   appsChanged: (cb: (w: AppWindow[]) => void) => listen<AppWindow[]>('apps:changed', (e) => cb(e.payload)),
-  audioChanged: (cb: (s: AudioState) => void) => listen<AudioState>('audio:changed', (e) => cb(e.payload)),
+  audioChanged: (cb: (s: AudioState) => void) => listen<AudioState>('audio:changed', (e) => { if (!volumeSettling()) cb(e.payload); }),
   mediaChanged: (cb: (m: MediaInfo | null) => void) => listen<MediaInfo | null>('media:changed', (e) => cb(e.payload)),
   alertsChanged: (cb: () => void) => listen('alerts:changed', () => cb()),
   downloadsNew: (cb: (i: DlItem) => void) => listen<DlItem>('downloads:new', (e) => cb(e.payload)),

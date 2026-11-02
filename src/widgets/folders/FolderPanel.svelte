@@ -2,8 +2,9 @@
   // One folder, opened from the dock: its name (click to rename; empty = no label) and its
   // apps in a 4-column grid. Click an app to open it (or switch to its window). Drag to
   // reorder; drag one out of the grid to take it out of the folder. + adds a program or
-  // shortcut, and so does dropping one from Explorer onto the panel.
-  import { Plus } from '@lucide/svelte';
+  // shortcut, and so does dropping one from Explorer onto the panel. With id ALL it lists every
+  // folder first; picking one opens it here, with a way back.
+  import { ChevronLeft, Plus } from '@lucide/svelte';
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
   import { ipc } from '../../lib/ipc';
   import { profile, updateWidgetSettings } from '../../lib/config.svelte';
@@ -12,7 +13,7 @@
   import type { Pin } from '../apps/index';
   import manifest, { type FoldersSettings } from './index';
   import { settingsOf } from '../types';
-  import { addApps, isApp, moveApp, pinId, pinName, removeApp, replace, type Folder } from './folders';
+  import { ALL, addApps, isApp, moveApp, pinId, pinName, removeApp, replace, type Folder } from './folders';
   import { iconOf, liveWindows } from './appIcons.svelte';
   import AppPicker from './AppPicker.svelte';
 
@@ -21,7 +22,9 @@
   // saved nothing yet, and reading the raw settings made its first folder look deleted.
   const inst = $derived(profile().widgets.find((w) => w.instance === instance));
   const settings = $derived(inst ? settingsOf<FoldersSettings>(manifest, inst) : undefined);
-  const folder = $derived(settings?.folders?.find((f) => f.id === id));
+  let picked = $state<string | null>(null); // a folder opened from the All folders list
+  const showing = $derived(picked ?? id);
+  const folder = $derived(settings?.folders?.find((f) => f.id === showing));
   const save = (f: Folder) => settings && updateWidgetSettings(instance, { folders: replace(settings.folders, f) });
   const wins = liveWindows();
 
@@ -36,6 +39,20 @@
   // focus and close a click-opened panel).
   let picking = $state(false);
   const addOne = (p: Pin) => { if (folder) save(addApps(folder, [p])); };
+  // A folder in the All folders list: open it, or delete it (a submenu as the confirmation,
+  // like on the dock; the apps themselves are untouched).
+  function folderMenu(e: MouseEvent, f: Folder) {
+    e.preventDefault();
+    showMenu([
+      { text: 'Open', action: () => (picked = f.id) },
+      '-',
+      { text: 'Delete folder', items: [
+        { text: `Delete ${f.name ? `“${f.name}”` : 'this folder'}${f.apps.length ? ` and its ${f.apps.length} shortcut${f.apps.length > 1 ? 's' : ''}` : ''}`,
+          action: () => settings && updateWidgetSettings(instance, { folders: settings.folders.filter((x) => x.id !== f.id) }) },
+        { text: 'Keep it', action: () => {} },
+      ] },
+    ]);
+  }
   function menu(e: MouseEvent, p: Pin, i: number) {
     e.preventDefault();
     if (!folder) return;
@@ -109,8 +126,27 @@
   });
 </script>
 
-{#if folder}
+{#if showing === ALL}
+  <div class="folderp">
+    <p class="title">All folders</p>
+    <div class="grid">
+      {#each settings?.folders ?? [] as f (f.id)}
+        <button class="app" onclick={() => (picked = f.id)} oncontextmenu={(e) => folderMenu(e, f)}
+                title={(f.apps.map(pinName).join(', ') || 'Empty folder') + ' · right-click to delete'}>
+          <span class="mini">
+            {#each f.apps.slice(0, 4) as p (pinId(p))}
+              {@const src = iconOf(p)}
+              {#if src}<img src={src} alt="" draggable="false" />{:else}<i class="ph">{pinName(p)[0]?.toUpperCase()}</i>{/if}
+            {/each}
+          </span>
+          <span class="nm ellipsis">{f.name || 'Folder'}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
+{:else if folder}
   <div class="folderp" class:dropping>
+    {#if picked}<button class="back" onclick={() => (picked = null)}><ChevronLeft size={14} /> All folders</button>{/if}
     <input class="name" value={folder.name} placeholder="Folder name (optional)" maxlength="32" aria-label="Folder name"
            onchange={(e) => save({ ...folder, name: e.currentTarget.value.trim() })}
            onkeydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
@@ -172,5 +208,14 @@
   .plus { display: grid; place-items: center; width: 36px; height: 36px; border-radius: calc(10px * var(--rs)); border: 1.5px dashed var(--line); }
   .add:hover .plus { border-color: var(--accent); color: var(--accent); }
   .hint { margin: 0; font-size: 11px; text-align: center; }
+  .title { margin: 0; font-size: 15px; font-weight: 600; text-align: center; }
+  .back { display: flex; align-items: center; gap: 2px; align-self: flex-start; padding: 2px 8px 2px 4px; border-radius: var(--r-inner); font-size: 12px; color: var(--fg-dim); }
+  .back:hover { background: var(--pill-hover); color: var(--fg); }
+  /* A folder in the All folders list: its first four apps on a phone-style square. */
+  .mini {
+    display: grid; grid-template-columns: repeat(2, 16px); grid-auto-rows: 16px; gap: 2px; padding: 4px; width: 42px; height: 42px; box-sizing: border-box;
+    border-radius: calc(11px * var(--rs)); background: var(--bg-2, var(--pill)); border: 1px solid var(--line-soft);
+  }
+  .mini img, .mini .ph { width: 16px; height: 16px; font-size: 9px; border-radius: 4px; object-fit: contain; }
   @media (prefers-reduced-motion: reduce) { .app { animation: none; transition: none; } }
 </style>

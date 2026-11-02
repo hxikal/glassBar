@@ -51,6 +51,10 @@
     </label>
   {/if}
   <button class="btn test" disabled={!settings.alerts} onclick={() => ipc.solatTestSound(settings)}><Play size={12} /> Test sound</button>
+  <OptionsPopover title="Tasbih" values={{ ...settings, showTasbih: settings.showTasbih !== false, tasbihOnDock: settings.tasbihOnDock !== false }} save={(p) => updateWidgetSettings(instance, p)} options={[
+    { type: 'toggle', key: 'showTasbih', label: 'Tasbih in this panel' },
+    { type: 'toggle', key: 'tasbihOnDock', label: 'Tasbih beside the prayer pill' },
+  ]} />
   <p class="dim small hint">Press ✓ on the prayer pill to stop the adzan. Your own recording can be set in Settings › Widgets.</p>
 {/if}
 {#if adhan.playing}

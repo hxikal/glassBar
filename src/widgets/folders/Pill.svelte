@@ -2,7 +2,8 @@
   // App Folders on the dock: each folder is one tile showing its first four app icons in a
   // 2 x 2 grid, like a folder on a phone, with a dot when any app inside is running. A click
   // opens the folder (hovering too, when that option is on). Dropping programs or shortcuts
-  // from Explorer onto a folder adds them to it.
+  // from Explorer onto a folder adds them to it. Only the first 2-4 folders show (maxShown);
+  // a "+n" chip, or a click on the widget around the folders, opens all of them.
   import { FolderOpen, FolderPlus } from '@lucide/svelte';
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
   import { ipc } from '../../lib/ipc';
@@ -12,12 +13,13 @@
   import { hits } from '../shelf/shelf';
   import type { PillProps } from '../types';
   import type { FoldersSettings } from './index';
-  import { ADD_APP, addApps, folderKey, isApp, newFolder, pinName, replace, type Folder } from './folders';
+  import { ADD_APP, ALL, addApps, folderKey, isApp, newFolder, pinName, replace, shownCount, visibleFolders, type Folder } from './folders';
   import type { Pin } from '../apps/index';
   import { iconOf, liveWindows } from './appIcons.svelte';
 
   let { instance, settings, vertical }: PillProps<FoldersSettings> = $props();
   const folders = $derived(settings.folders ?? []);
+  const vis = $derived(visibleFolders(folders, settings.maxShown));
   const save = (next: Folder[]) => updateWidgetSettings(instance, { folders: next });
   const wins = liveWindows();
   const running = (f: Folder) => f.apps.some((p) => wins.of(p).length > 0);
@@ -30,6 +32,12 @@
     hp.cancel();
     ipc.popupOpen(folderKey(false, instance, f.id), (e.currentTarget as HTMLElement).getBoundingClientRect(), W, H);
   }
+  function openAll(e: MouseEvent) {
+    e.stopPropagation();
+    if (!folders.length || !wrap) return;
+    hp.cancel();
+    ipc.popupOpen(folderKey(false, instance, ALL), wrap.getBoundingClientRect(), W, H);
+  }
   const enter = (e: PointerEvent, f: Folder) => { if (settings.openOnHover) hp.enter(e, folderKey(true, instance, f.id), W, H); };
 
   async function menu(e: MouseEvent, f?: Folder) {
@@ -37,7 +45,10 @@
     e.stopPropagation();
     await showMenu([
       ...(f ? [{ text: 'Open', action: () => ipc.popupOpen(folderKey(false, instance, f.id), tiles[f.id].getBoundingClientRect(), W, H) }] : []),
+      ...(folders.length > 1 ? [{ text: 'All folders', action: () => wrap && ipc.popupOpen(folderKey(false, instance, ALL), wrap.getBoundingClientRect(), W, H) }] : []),
       { text: 'New folder', action: () => save([...folders, newFolder()]) },
+      { text: 'Folders on the dock', items: [2, 3, 4].map((n) => ({ text: `${n}`, checked: shownCount(settings.maxShown) === n,
+        action: () => updateWidgetSettings(instance, { maxShown: n }) })) },
       { text: 'Show folder names', checked: settings.showNames, action: () => updateWidgetSettings(instance, { showNames: !settings.showNames }) },
       { text: 'Open folders on hover', checked: settings.openOnHover, action: () => updateWidgetSettings(instance, { openOnHover: !settings.openOnHover }) },
       ...(f ? ['-' as const, { text: 'Delete folder', items: [
@@ -87,9 +98,10 @@
   });
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class={vertical ? 'side-stack' : 'pill folders'} bind:this={wrap} oncontextmenu={(e) => menu(e)}>
-  {#each folders as f (f.id)}
+<!-- The click around the folders opens all of them; keyboard users have +n and the menu. -->
+<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+<div class={vertical ? 'side-stack' : 'pill folders'} bind:this={wrap} oncontextmenu={(e) => menu(e)} onclick={openAll}>
+  {#each vis.shown as f (f.id)}
     {@const first = f.apps.slice(0, 4)}
     <button class="folder" class:side={vertical} class:over={over === f.id} class:landed={landed === f.id} bind:this={tiles[f.id]} data-folder-drop={f.id}
             title={`${f.name || 'Folder'} · ${f.apps.length ? f.apps.map(pinName).join(', ') : 'empty — click to add apps, or drag one here'}`}
@@ -109,6 +121,9 @@
       {#if settings.showNames && f.name && !vertical}<span class="nm ellipsis">{f.name}</span>{/if}
     </button>
   {/each}
+  {#if vis.more}
+    <button class="folder more" class:side={vertical} title="All folders" onclick={openAll}><span class="grid empty">+{vis.more}</span></button>
+  {/if}
   {#if !folders.length}
     <button class="folder" class:side={vertical} title="New folder" onclick={(e) => { e.stopPropagation(); save([newFolder()]); }}>
       <FolderPlus size={18} />
@@ -146,5 +161,6 @@
   .ph { display: grid; place-items: center; width: 12px; height: 12px; border-radius: 3px; font-size: 8px; font-style: normal; font-weight: 600;
         background: var(--accent); color: var(--on-accent); }
   .run { position: absolute; left: 50%; bottom: 0; width: 5px; height: 3px; translate: -50% 0; border-radius: 2px; background: var(--accent); }
+  .more .grid { font-size: 12px; font-weight: 600; color: var(--fg); }
   .nm { max-width: 90px; font-size: 11.5px; font-weight: 500; }
 </style>

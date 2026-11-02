@@ -74,6 +74,22 @@ describe('playAdzan', () => {
     stopSound();
   });
 
+  it('a replaced adzan neither ends nor resumes the music: the new one does, once', async () => {
+    const media = { pause: vi.fn(async () => ['Spotify.exe']), resume: vi.fn(async () => {}) };
+    const firstEnd = vi.fn(), secondEnd = vi.fn();
+    playAdzan('a.mp3', false, true, media, 1, firstEnd);
+    await flush();
+    media.pause.mockResolvedValueOnce([]); // the music is already paused by the first
+    playAdzan('b.mp3', false, true, media, 1, secondEnd);
+    await flush();
+    expect(firstEnd).not.toHaveBeenCalled();
+    expect(media.resume).not.toHaveBeenCalled();
+    ended();
+    await flush();
+    expect(secondEnd).toHaveBeenCalledOnce();
+    expect(media.resume).toHaveBeenCalledWith(['Spotify.exe']);
+  });
+
   it('a bundled recording stops at its own takbir pause', async () => {
     playAdzan('a.mp3', ADHANS.madina.short, false, { pause: async () => [], resume: async () => {} });
     await flush();

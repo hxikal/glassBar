@@ -8,7 +8,7 @@
   import Tank from '../../lib/Tank.svelte';
   import type { PopupProps } from '../types';
   import { WATER_DEFAULTS, type WaterSettings } from './settings';
-  import { fmtWater, progressOf } from './units';
+  import { fmtWater, progressOf, untilText } from './units';
   import { liveWater } from './live.svelte';
 
   let { instance, settings: raw }: PopupProps<WaterSettings> = $props();
@@ -80,6 +80,12 @@
       <span class="dim">of {fmtWater(w.v.goal, s.unit)} · {Math.round(p * 100)}%</span>
     </span>
     {#if p >= 1}<p class="done">Goal reached today</p>{:else if w.v.hot}<p class="dim small">Hot day: goal +10 %</p>{/if}
+    {#if !s.remind}
+      <p class="dim small">Reminders are off <button class="turn-on" onclick={() => save({ remind: true })}>Turn on</button></p>
+    {:else if w.v.nextReminder != null}
+      {@const left = untilText(w.v.nextReminder - w.now)}
+      <p class="dim small">Next reminder {left === 'now' ? 'now' : `in ${left}`} · {new Date(w.v.nextReminder).toDateString() === new Date(w.now).toDateString() ? '' : 'tomorrow '}{time(w.v.nextReminder)}</p>
+    {/if}
   </div>
 
   <div class="cups">
@@ -132,6 +138,7 @@
   .done { margin: 0; color: #40c8e0; font-size: 12px; font-weight: 600; animation: rise 0.3s var(--ease); }
   @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
   .small { font-size: 11px; margin: 0; }
+  .turn-on { margin-left: 4px; padding: 1px 8px; border-radius: var(--r-chip); background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 600; }
   .cups { display: flex; gap: 6px; justify-content: center; }
   .cup {
     display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 12px; border-radius: var(--r-chip);

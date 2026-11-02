@@ -77,7 +77,9 @@ pub struct Entry { at: i64, ml: u32 }
 pub struct Day { day0: i64, ml: u32 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Today { total: u32, goal: u32, cup: u32, entries: Vec<Entry>, week: Vec<Day>, hot: bool }
+pub struct Today { total: u32, goal: u32, cup: u32, entries: Vec<Entry>, week: Vec<Day>, hot: bool,
+                   /// When the next reminder shows (epoch ms); None when reminders are off or the goal is met.
+                   next_reminder: Option<i64> }
 
 /// "ml" or "oz": how the dock alert writes amounts.
 fn unit(app: &AppHandle) -> String {
@@ -100,8 +102,12 @@ fn today(app: &AppHandle) -> Today {
         Day { day0: s, ml: rows.iter().filter(|(at, _)| *at >= s && *at < s + DAY).map(|r| r.1).sum() }
     }).collect();
     let entries: Vec<Entry> = rows.iter().filter(|(at, _)| *at >= d0).map(|&(at, ml)| Entry { at, ml }).collect();
-    Today { total: entries.iter().map(|e| e.ml).sum(), goal: goal_ml(&c, t), cup: c.cup, entries, week,
-            hot: c.dynamic && c.hot_bonus && t.is_some_and(|t| t >= 30.0) }
+    let (total, goal) = (entries.iter().map(|e| e.ml).sum(), goal_ml(&c, t));
+    let next_reminder = (c.remind && total < goal).then(|| {
+        let snooze = kv_get(&conn, "water:snooze").and_then(|s| s.parse().ok());
+        reminder_times(d0, now_ms(), entries.last().map(|e| e.at), snooze, c.every_min * 60_000, c.from_h * HOUR, c.to_h * HOUR).1
+    });
+    Today { total, goal, cup: c.cup, entries, week, hot: c.dynamic && c.hot_bonus && t.is_some_and(|t| t >= 30.0), next_reminder }
 }
 
 fn changed(app: &AppHandle) -> Today {
@@ -147,7 +153,7 @@ pub async fn water_remove(app: AppHandle, at: i64) -> Result<Today, String> {
 pub async fn water_snooze(app: AppHandle, minutes: i64) -> Result<(), String> {
     crate::widgets::blocking(move || {
         { let db = app.state::<Db>(); kv_set(&db.lock(), "water:snooze", &(now_ms() + minutes.clamp(1, 240) * 60_000).to_string()); }
-        crate::scheduler::poke();
+        changed(&app); // the countdown on the widget moves too
     }).await
 }
 
@@ -169,8 +175,9 @@ pub fn due_items(app: &AppHandle) -> Vec<Due> {
 
 /// A reminder is due: the dock says so (nothing missed while away, nothing in Do Not Disturb).
 pub fn remind(app: &AppHandle, missed: bool) {
-    if missed || app.state::<crate::AppState>().config.lock().unwrap().dnd { return; }
     let t = today(app);
+    let _ = app.emit("water:changed", &t); // the widget's countdown moves on to the next one
+    if missed || app.state::<crate::AppState>().config.lock().unwrap().dnd { return; }
     let _ = app.emit_to("bar", "dock:alert", serde_json::json!({ "kind": "water", "total": t.total, "goal": t.goal, "cup": t.cup, "unit": unit(app) }));
 }
 
