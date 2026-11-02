@@ -220,8 +220,8 @@ pub fn prayer_alert(key: &str, at: i64, missed: bool, dnd: bool) -> Option<Value
 }
 
 /// The prayer-time sound from the widget settings: "short" (default) or "full" adzan,
-/// or "chime" (None = the normal alert chime). The user's own file replaces the built-in
-/// recording and follows short/full too.
+/// or "chime" (None = the normal alert chime). `azanVoice` picks the built-in recording (the
+/// dock knows them; unset = its default). The user's own file replaces it and follows short/full too.
 pub fn solat_sound(s: &Value) -> Option<Value> {
     let mode = s["azanSound"].as_str().unwrap_or("short");
     if mode == "chime" { return None; }
@@ -232,7 +232,7 @@ pub fn solat_sound(s: &Value) -> Option<Value> {
     let volume = (s["azanVolume"].as_f64().unwrap_or(100.0) / 100.0).clamp(0.0, 1.0);
     Some(match s["azanFile"].as_str().filter(|f| !f.is_empty()) {
         Some(f) => serde_json::json!({ "kind": "azan", "file": f, "short": short, "pauseMusic": pause, "volume": volume }),
-        None => serde_json::json!({ "kind": "adhan", "short": short, "pauseMusic": pause, "volume": volume }),
+        None => serde_json::json!({ "kind": "adhan", "voice": s["azanVoice"].as_str().unwrap_or("madina"), "short": short, "pauseMusic": pause, "volume": volume }),
     })
 }
 
@@ -284,9 +284,9 @@ mod tests {
     #[test]
     fn prayer_sound_defaults_to_short_adhan() {
         use serde_json::json;
-        assert_eq!(solat_sound(&json!({})), Some(json!({ "kind": "adhan", "short": true, "pauseMusic": true, "volume": 1.0 })), "old configs get the short adzan, pausing music, full volume");
+        assert_eq!(solat_sound(&json!({})), Some(json!({ "kind": "adhan", "voice": "madina", "short": true, "pauseMusic": true, "volume": 1.0 })), "old configs get the short Madina adzan, pausing music, full volume");
         assert_eq!(solat_sound(&json!({ "azanVolume": 40 })).unwrap()["volume"], json!(0.4));
-        assert_eq!(solat_sound(&json!({ "azanSound": "full", "pauseMusic": false })), Some(json!({ "kind": "adhan", "short": false, "pauseMusic": false, "volume": 1.0 })));
+        assert_eq!(solat_sound(&json!({ "azanSound": "full", "azanVoice": "classic", "pauseMusic": false })), Some(json!({ "kind": "adhan", "voice": "classic", "short": false, "pauseMusic": false, "volume": 1.0 })));
         assert_eq!(solat_sound(&json!({ "azanSound": "chime", "azanFile": "C:/a.mp3" })), None, "normal sound ignores the file");
         assert_eq!(solat_sound(&json!({ "azanFile": "C:/a.mp3" })), Some(json!({ "kind": "azan", "file": "C:/a.mp3", "short": true, "pauseMusic": true, "volume": 1.0 })));
         assert_eq!(sound_payload(&json!({ "kind": "azan", "file": "C:/missing.mp3", "pauseMusic": true })), json!({ "kind": "chime" }), "unreadable file falls back to the chime, which pauses nothing");

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { playAdzan, stopSound } from './sound';
+import { ADHANS, adhanOf, playAdzan, stopSound } from './sound';
 
 // Web Audio, faked: the adzan is decoded and played through an AudioBufferSourceNode.
 class FakeSource { buffer: unknown = null; onended: (() => void) | null = null; connect = () => fakeGain; start = vi.fn(); stop = () => this.onended?.(); }
@@ -72,5 +72,20 @@ describe('playAdzan', () => {
     await flush();
     expect(FakeContext.last?.start).toHaveBeenCalledWith(0, 0, 43.3);
     stopSound();
+  });
+
+  it('a bundled recording stops at its own takbir pause', async () => {
+    playAdzan('a.mp3', ADHANS.madina.short, false, { pause: async () => [], resume: async () => {} });
+    await flush();
+    expect(FakeContext.last?.start).toHaveBeenCalledWith(0, 0, 45);
+    stopSound();
+  });
+});
+
+describe('adhanOf', () => {
+  it('defaults to the Madina recording when unset or unknown', () => {
+    expect(adhanOf()).toBe(ADHANS.madina);
+    expect(adhanOf('toString')).toBe(ADHANS.madina);
+    expect(adhanOf('classic')).toBe(ADHANS.classic);
   });
 });

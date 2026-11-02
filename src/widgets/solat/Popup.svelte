@@ -4,6 +4,7 @@
   import PanelHeader from '../../lib/PanelHeader.svelte';
   import { updateWidgetSettings } from '../../lib/config.svelte';
   import { ipc } from '../../lib/ipc';
+  import { ADHANS } from '../../lib/sound';
   import OptionsPopover from '../../lib/OptionsPopover.svelte';
   import type { PopupProps } from '../types';
   import type { SolatSettings } from './index';
@@ -38,7 +39,9 @@
       { value: 'short', label: 'Short adzan', hint: 'The opening takbir, about 40 seconds' },
       { value: 'full', label: 'Full adzan' },
       { value: 'chime', label: 'Normal alert sound', hint: 'The usual short alert sound' }] },
-    ...(settings.azanSound !== 'chime' ? [{ type: 'toggle' as const, key: 'pauseMusic', label: 'Pause music during adzan' }] : []),
+    ...(settings.azanSound !== 'chime' ? [
+      ...(settings.azanFile ? [] : [{ type: 'choice' as const, key: 'azanVoice', label: 'Voice', menu: true, choices: Object.entries(ADHANS).map(([value, a]) => ({ value, label: a.label })) }]),
+      { type: 'toggle' as const, key: 'pauseMusic', label: 'Pause music during adzan' }] : []),
   ]} />
   {#if settings.azanSound !== 'chime'}
     <label class="vol"><span class="dim">Adzan volume</span>

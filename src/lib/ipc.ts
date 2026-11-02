@@ -148,7 +148,7 @@ export interface TrayIcon { id: string; tip: string; icon: string | null; exe: s
 export interface KeyboardLayout { id: number; code: string; name: string; locale: string; active: boolean }
 export interface DiskInfo { mount: string; label: string; total: number; available: number; removable: boolean; fs: string }
 export interface ScreenToday { total: number; apps: { exe: string; name: string; seconds: number }[] }
-export type Sound = { kind: 'chime'; volume?: number } | { kind: 'azan'; src: string; short?: boolean; pauseMusic?: boolean; volume?: number } | { kind: 'adhan'; short: boolean; pauseMusic?: boolean; volume?: number } | { kind: 'connect' | 'disconnect' | 'plug' | 'unplug'; volume: number };
+export type Sound = { kind: 'chime'; volume?: number } | { kind: 'azan'; src: string; short?: boolean; pauseMusic?: boolean; volume?: number } | { kind: 'adhan'; short: boolean; voice?: string; pauseMusic?: boolean; volume?: number } | { kind: 'connect' | 'disconnect' | 'plug' | 'unplug'; volume: number };
 
 export interface AppWindow { id: number; title: string; exe: string; active: boolean; minimized: boolean; aumid?: string | null }
 export interface AudioDevice { id: string; name: string; isDefault: boolean }

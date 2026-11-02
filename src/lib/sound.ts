@@ -1,4 +1,6 @@
 import { emit } from '@tauri-apps/api/event';
+import classicUrl from '../assets/adhan.ogg?url';
+import madinaUrl from '../assets/adhan-madina.ogg?url';
 // Alert sounds. The chime is synthesized, so no audio file ships with the app.
 let ctx: AudioContext | null = null;
 let idle: ReturnType<typeof setTimeout>;
@@ -90,15 +92,27 @@ function finish(p: typeof current) {
   idleLater();
 }
 
-/** Short adzan: the opening takbir of the bundled recording, which ends in a pause at 43.0-43.7 s (ffmpeg silencedetect). */
-export const SHORT_ADHAN_S = 43.3;
+/** The bundled adzan recordings, the default first. `short`: where the opening takbir ends, in
+ *  seconds (the pause after it, measured with ffmpeg astats / silencedetect). */
+export const ADHANS = {
+  // Muhammad Marwan Qassas (Madinah) over rain; the pause is at 43.3-46.5 s.
+  madina: { label: 'Madina, with rain', url: madinaUrl, short: 45 },
+  // "Beautiful adhan" by Adam-synagda, Wikimedia Commons, CC0; the pause is at 43.0-43.7 s.
+  classic: { label: 'Classic', url: classicUrl, short: 43.3 },
+};
+export type AdhanVoice = keyof typeof ADHANS;
+/** The chosen recording; unknown or unset = the default. */
+export const adhanOf = (voice?: string) => ADHANS[voice && Object.hasOwn(ADHANS, voice) ? voice as AdhanVoice : 'madina'];
+/** Short adzan of the user's own file: the classic recording's cut. */
+export const SHORT_ADHAN_S = ADHANS.classic.short;
 const FADE_S = 1.5;
 
-/** Play a sound file (the adzan): whole, or with `short` only its opening, faded out.
+/** Play a sound file (the adzan): whole, or with `short` only its opening (to SHORT_ADHAN_S, or
+ *  to `short` seconds), faded out.
  *  `done` runs once when it ends, is stopped or is replaced.
  *  Web Audio, not an <audio> element: an <audio> element is a media session, so Windows put
  *  the adzan on the dock's music player (and it took over the player's controls). */
-export function playFile(src: string, short = false, done?: () => void, volume = 1) {
+export function playFile(src: string, short: boolean | number = false, done?: () => void, volume = 1) {
   stopSound();
   let node: AudioBufferSourceNode | null = null;
   const me = { stop: () => { try { node?.stop(); } catch { /* not started yet */ } } };
@@ -119,7 +133,7 @@ export function playFile(src: string, short = false, done?: () => void, volume =
     s.onended = () => finish(me);
     node = s;
     if (short) {
-      const end = Math.min(SHORT_ADHAN_S, buf.duration);
+      const end = Math.min(short === true ? SHORT_ADHAN_S : short, buf.duration);
       g.gain.setValueAtTime(v, t + Math.max(0, end - FADE_S));
       g.gain.linearRampToValueAtTime(0, t + end);
       s.start(t, 0, end);
@@ -136,7 +150,7 @@ export function stopSound() {
 
 /** Play the adzan; with `pauseMusic`, pause other playing media first and resume it afterwards.
  *  `onEnd` runs once when it ends, is stopped (stopSound) or is replaced. */
-export function playAdzan(src: string, short: boolean, pauseMusic: boolean, media: { pause: () => Promise<string[]>; resume: (ids: string[]) => Promise<void> }, volume = 1, onEnd?: () => void) {
+export function playAdzan(src: string, short: boolean | number, pauseMusic: boolean, media: { pause: () => Promise<string[]>; resume: (ids: string[]) => Promise<void> }, volume = 1, onEnd?: () => void) {
   if (!pauseMusic) return playFile(src, short, onEnd, volume);
   void media.pause().catch(() => []).then((ids) => playFile(src, short, () => { if (ids.length) media.resume(ids).catch(() => {}); onEnd?.(); }, volume));
 }
