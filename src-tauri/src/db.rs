@@ -88,15 +88,25 @@ fn connect(path: &Path) -> rusqlite::Result<Connection> {
     Ok(c)
 }
 
-fn healthy(c: &Connection) -> bool {
-    c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0)).map(|s| s == "ok").unwrap_or(false)
+/// What `quick_check` found wrong, or None when the file is fine.
+fn problem(c: &Connection) -> Option<String> {
+    match c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0)) {
+        Ok(s) if s == "ok" => None,
+        Ok(s) => Some(s),
+        Err(e) => Some(e.to_string()),
+    }
 }
 
 /// The file itself is damaged: move it (and its -wal/-shm) aside as `.corrupt-<ms>` and copy
 /// every row that can still be read into a fresh file. Rows on damaged pages are lost.
-fn salvage(path: &Path) -> rusqlite::Result<Connection> {
+fn salvage(path: &Path, why: &str) -> rusqlite::Result<Connection> {
     let bad = PathBuf::from(format!("{}.corrupt-{}", path.display(), now_ms()));
-    for ext in ["", "-wal", "-shm"] {
+    // Still open elsewhere (another GlassBar): copying it now would only make an empty copy.
+    if let Err(e) = std::fs::rename(path, &bad) {
+        crate::applog::log(format!("db: check said \"{why}\" but the file could not be set aside ({e}); using it as it is"));
+        return connect(path);
+    }
+    for ext in ["-wal", "-shm"] {
         let _ = std::fs::rename(format!("{}{ext}", path.display()), format!("{}{ext}", bad.display()));
     }
     let c = connect(path)?;
@@ -105,10 +115,15 @@ fn salvage(path: &Path) -> rusqlite::Result<Connection> {
     let tables: Vec<String> = c.prepare("SELECT name FROM main.sqlite_master WHERE type = 'table'")?
         .query_map([], |r| r.get(0))?.filter_map(Result::ok).collect();
     for t in tables {
-        let _ = c.execute(&format!("INSERT OR IGNORE INTO main.\"{t}\" SELECT * FROM old.\"{t}\""), []);
+        // `WHERE 1` makes SQLite insert row by row. Without it, it copies the old index pages
+        // as they are, broken ones included, and every start found the same damage again.
+        // A broken index also let an app's day in twice: add those up rather than drop one.
+        let merge = if t == "screen_time" { " ON CONFLICT(day, exe) DO UPDATE SET seconds = seconds + excluded.seconds" } else { "" };
+        let or = if merge.is_empty() { "OR IGNORE " } else { "" };
+        let _ = c.execute(&format!("INSERT {or}INTO main.\"{t}\" SELECT * FROM old.\"{t}\" WHERE 1{merge}"), []);
     }
     c.execute("DETACH old", [])?;
-    crate::applog::log(format!("db: the file was damaged; kept a copy as {} and moved what could be read into a new one", bad.display()));
+    crate::applog::log(format!("db: the file was damaged ({why}); kept a copy as {} and moved what could be read into a new one", bad.display()));
     Ok(c)
 }
 
@@ -118,14 +133,18 @@ fn backup(c: &Connection, path: &Path) {
     let bak = PathBuf::from(format!("{}.bak", path.display()));
     let day_old = std::fs::metadata(&bak).and_then(|m| m.modified()).map(|t| t.elapsed().unwrap_or_default().as_secs() > 86_400).unwrap_or(true);
     if !day_old { return; }
+    // Written under a name of its own first: VACUUM INTO refuses a file that exists, and two
+    // GlassBars starting together used to trip over each other's `.bak`.
+    let tmp = format!("{}.tmp-{}", bak.display(), std::process::id());
+    if let Err(e) = c.execute("VACUUM INTO ?1", [&tmp]) { crate::applog::log(format!("db: backup failed: {e}")); return; }
     let _ = std::fs::rename(&bak, format!("{}.old", bak.display()));
-    if let Err(e) = c.execute("VACUUM INTO ?1", [bak.to_string_lossy()]) { crate::applog::log(format!("db: backup failed: {e}")); }
+    if let Err(e) = std::fs::rename(&tmp, &bak) { crate::applog::log(format!("db: backup failed: {e}")); }
 }
 
 pub fn open(path: &Path) -> rusqlite::Result<Db> {
     if let Some(dir) = path.parent() { let _ = std::fs::create_dir_all(dir); }
     let c = connect(path)?;
-    let c = if healthy(&c) { c } else { drop(c); salvage(path)? };
+    let c = match problem(&c) { None => c, Some(why) => { drop(c); salvage(path, &why)? } };
     migrate(&c)?;
     backup(&c, path);
     Ok(Db { conn: Mutex::new(c), path: path.to_path_buf() })
@@ -209,10 +228,35 @@ mod tests {
         let db = open(&p).unwrap();
         let t: String = db.lock().query_row("SELECT text FROM todos", [], |r| r.get(0)).unwrap();
         assert_eq!(t, "keep");
-        assert!(healthy(&db.lock()));
+        assert_eq!(problem(&db.lock()), None);
         let aside = std::fs::read_dir(p.parent().unwrap()).unwrap().filter_map(Result::ok)
             .any(|e| e.file_name().to_string_lossy().contains(".corrupt-"));
         assert!(aside, "the damaged file is kept");
+    }
+
+    #[test]
+    fn a_broken_index_is_rebuilt_once_not_salvaged_on_every_start() {
+        let p = tmp("index");
+        { open(&p).unwrap().lock().execute("INSERT INTO water(at, ml) VALUES (1, 100)", []).unwrap(); }
+        // Make water_at miss a row (what screen_time's index had): hide the index, add a row, put it back.
+        {
+            let c = Connection::open(&p).unwrap();
+            let (root, sql): (i64, String) = c.query_row("SELECT rootpage, sql FROM sqlite_master WHERE name = 'water_at'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+            c.execute_batch("PRAGMA writable_schema = ON; DELETE FROM sqlite_master WHERE name = 'water_at';").unwrap();
+            drop(c);
+            let c = Connection::open(&p).unwrap();
+            c.execute("INSERT INTO water(at, ml) VALUES (2, 200)", []).unwrap();
+            c.execute_batch("PRAGMA writable_schema = ON;").unwrap();
+            c.execute("INSERT INTO sqlite_master VALUES ('index', 'water_at', 'water', ?1, ?2)", params![root, sql]).unwrap();
+        }
+        assert!(problem(&Connection::open(&p).unwrap()).is_some(), "the test really broke the index");
+        let corrupt = || std::fs::read_dir(p.parent().unwrap()).unwrap().filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().ends_with(|c: char| c.is_ascii_digit())).count();
+        drop(open(&p).unwrap());
+        let db = open(&p).unwrap();
+        assert_eq!(problem(&db.lock()), None);
+        let n: i64 = db.lock().query_row("SELECT count(*) FROM water", [], |r| r.get(0)).unwrap();
+        assert_eq!((n, corrupt()), (2, 1), "rows kept, set aside once only");
     }
 
     #[test]
