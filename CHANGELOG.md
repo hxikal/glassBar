@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.10 — 2026-11-02
+
+### Fixed
+- **Store apps show in search and when adding apps.** Spotify, WhatsApp, Calculator, Notepad, Settings, Photos and other Microsoft Store apps now appear in GlassBar search, in Folders › Add app and in Apps › Pin from installed apps. They open the way the Start menu opens them, with their own icons.
+- **Settings › Performance shows GlassBar's real memory use.** It counted apps you opened from the dock as GlassBar's (it once showed 4 GB). It now counts GlassBar and its WebView2 helpers only, the way Task Manager does.
+- **"The file was damaged" no longer repeats on every start.** A small fault in the screen-time index is repaired once and stays repaired. A second GlassBar launch no longer touches the database.
+
+### New
+- **Settings › Performance lists each process** (GlassBar, WebView2 Manager, GPU Process, Renderers…) with its own memory, CPU and GPU, named as in Task Manager.
+
 ## 0.6.9 — 2026-11-02
 
 ### New

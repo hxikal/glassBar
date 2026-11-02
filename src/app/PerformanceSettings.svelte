@@ -5,20 +5,25 @@
   import { Check } from '@lucide/svelte';
   import Sparkline from '../lib/Sparkline.svelte';
   import { update } from '../lib/config.svelte';
-  import { events, ipc, type PerfMode, type PerfSample } from '../lib/ipc';
+  import { events, ipc, type PerfMode, type PerfSample, type ProcUsage } from '../lib/ipc';
   import { perf } from '../lib/perf.svelte';
   import { widgets } from '../widgets/registry';
   import { APP_ROWS, MODE_CARDS, ago, changeList, fmtBytes, fmtMetric, fmtPct, netLastHour, pointAt, timeSeries, type Metric } from './perfPage';
 
   let samples = $state<PerfSample[]>([]);
+  // The newest per-process reading; samples drop theirs (an hour of them is dead weight).
+  let procs = $state<ProcUsage[]>([]);
   let metric = $state<Metric>('ram');
   let graphW = $state(520);
   let hover = $state<number | null>(null);
   const STEP = 30_000, H = 70;
 
   onMount(() => {
-    ipc.perfHistory().then((h) => (samples = h)).catch(() => {});
-    const off = events.perfSample((s) => { samples = [...samples.filter((x) => x.at > s.at - 3_600_000), s]; });
+    ipc.perfHistory().then((h) => { samples = h; procs = h.at(-1)?.procs ?? []; }).catch(() => {});
+    const off = events.perfSample((s) => {
+      procs = s.procs;
+      samples = [...samples.filter((x) => x.at > s.at - 3_600_000), { ...s, procs: [] }];
+    });
     // The 1-second sampling is a lease: renew it while this page is open.
     ipc.perfWatch().catch(() => {});
     const t = setInterval(() => ipc.perfWatch().catch(() => {}), 2000);
@@ -44,6 +49,7 @@
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     hover = series.length ? pointAt(e.clientX - r.left, r.width, series.length) : null;
   };
+  const mb = (v: number) => `${v.toFixed(1)} MB`;
   const title = (m: PerfMode) => MODE_CARDS.find((c) => c.mode === m)!.title;
 
   const pick = (mode: PerfMode) => update((c) => { c.performance = { mode, auto: false }; });
@@ -52,7 +58,7 @@
 
 <div class="group">
   <div class="strip">
-    <span>RAM <b>{last ? `${Math.round(last.ramMb)} MB` : '—'}</b></span>
+    <span>RAM <b>{last ? mb(last.ramMb) : '—'}</b></span>
     <span>CPU <b>{last ? fmtPct(last.cpu) : '—'}</b></span>
     <span>GPU <b>{last ? fmtPct(last.gpu) : '—'}</b></span>
     <span>Net <b>{fmtBytes(netLastHour(samples))}/hr</b> <span class="dim">({fmtBytes(last?.netBytes ?? 0)} since start)</span></span>
@@ -72,7 +78,18 @@
       <i class="dot" style="left:{tip.x}px; top:{tip.y}px"></i>
     {/if}
   </div>
-  <p class="hint">Includes GlassBar's WebView2 helpers and this Settings window. Network counts data GlassBar downloaded.</p>
+  {#if procs.length}
+    <table class="procs">
+      <thead><tr><th>Process</th><th>RAM</th><th>CPU</th><th>GPU</th></tr></thead>
+      <tbody>
+        {#each procs as p (p.pid)}
+          <tr><td>{p.name}</td><td>{mb(p.ramMb)}</td><td>{fmtPct(p.cpu)}</td><td>{fmtPct(p.gpu)}</td></tr>
+        {/each}
+      </tbody>
+    </table>
+  {/if}
+  <p class="hint">GlassBar and its WebView2 helpers (this Settings window too), measured like Task Manager's Memory column.
+    Apps you open from the dock aren't counted. Network counts data GlassBar downloaded.</p>
 </div>
 
 <div class="group">
@@ -110,6 +127,10 @@
   .cursor { top: 0; bottom: 0; width: 1px; background: var(--fg-dim); opacity: 0.5; }
   .dot { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--fg); }
   .read b { font-variant-numeric: tabular-nums; }
+  .procs { width: 100%; margin: 10px 0 12px; border-collapse: collapse; font-size: 12px; }
+  .procs th { font-weight: 500; color: var(--fg-dim); text-align: right; padding: 0 0 4px 12px; }
+  .procs td { text-align: right; padding: 4px 0 4px 12px; border-top: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .procs :is(th, td):first-child { text-align: left; padding-left: 0; width: 100%; white-space: normal; }
   .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 4px 0 8px; }
   .card { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px; border-radius: calc(10px * var(--rs));
           background: var(--pill); border: 2px solid transparent; }

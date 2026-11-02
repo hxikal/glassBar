@@ -56,11 +56,12 @@ pub fn usage() -> Option<f32> {
     Some(read(&QUERY)?.iter().map(|(_, v)| v).sum::<f64>().clamp(0.0, 100.0) as f32)
 }
 
-/// 3D engine utilization of just these processes, 0..100. First call returns ~0.
-pub fn usage_for(pids: &[u32]) -> Option<f32> {
-    Some(read(&QUERY_PIDS)?.iter()
-        .filter(|(p, _)| p.is_some_and(|p| pids.contains(&p)))
-        .map(|(_, v)| v).sum::<f64>().clamp(0.0, 100.0) as f32)
+/// 3D engine utilization of each of these processes (same order), 0..100. First call returns ~0.
+pub fn usage_each(pids: &[u32]) -> Option<Vec<f32>> {
+    let all = read(&QUERY_PIDS)?;
+    // A fold from 0, not sum(): an empty f64 sum is -0.0, which reads "-0%".
+    Some(pids.iter().map(|&p| all.iter().filter(|(q, _)| *q == Some(p))
+        .fold(0.0, |a, (_, v)| a + v).clamp(0.0, 100.0) as f32).collect())
 }
 
 #[cfg(test)]

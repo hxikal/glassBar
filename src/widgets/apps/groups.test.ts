@@ -115,3 +115,15 @@ describe('minimizedOrder', () => {
     expect(minimizedOrder([], [min(4, false)])).toEqual([]);
   });
 });
+
+describe('Store apps pinned from the app list', () => {
+  it('match their window by app ID when the pinned .exe is a launcher', () => {
+    const id = 'SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify';
+    const dir = 'C:\Program Files\WindowsApps\SpotifyAB.SpotifyMusic_1.3.0.0_x64__zpdnekdrzrea0';
+    const g = group([{ path: `${dir}\SpotifyMigrator.exe`, aumid: id, name: 'Spotify' }],
+      [{ id: 7, title: 'Spotify', exe: `${dir}\Spotify.exe`, active: false, minimized: false, aumid: id }]);
+    expect(g.length).toBe(1);
+    expect(g[0].windows.map((w) => w.id)).toEqual([7]);
+    expect(g[0].name).toBe('Spotify');
+  });
+});

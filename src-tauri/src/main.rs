@@ -120,12 +120,8 @@ fn main() {
         dragging: AtomicBool::new(false),
         revealed: AtomicBool::new(false),
     };
-    // Never recreated over an existing file; a failure here is logged by the panic hook.
-    let database = db::open(&data_dir().join("glassbar.db")).expect("could not open glassbar.db");
-
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(state)
-        .manage(database)
         .plugin(tauri_plugin_single_instance::init(|app, _, _| { let _ = bar::open_settings(app); }))
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_notification::init())
@@ -198,6 +194,8 @@ fn main() {
             // Started with Windows: monitors and Explorer may still be settling. Place again soon.
             bar::apply_later(h, &[3, 15]);
             health::start(h.clone());
+            // Ready before the first search or app picker opens.
+            std::thread::spawn(|| { widgets::apps::installed(); });
             Ok(())
         })
         .on_window_event(|w, e| match (w.label(), e) {
@@ -274,6 +272,11 @@ fn main() {
             widgets::quick::clock_system_12h, widgets::quick::lang_list, widgets::quick::lang_set, widgets::quick::windows_notifications, widgets::quick::show_desktop, widgets::quick::windows_search_text,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building GlassBar")
-        .run(|app, e| if let RunEvent::Exit = e { bar::cleanup(app) });
+        .expect("error while building GlassBar");
+    // Opened only after build(): a second GlassBar has handed over to the running one and quit
+    // inside it (single-instance plugin), so it never opens, checks or backs up the live file.
+    // Still before run(), which creates the windows that use it.
+    // Never recreated over an existing file; a failure here is logged by the panic hook.
+    app.manage(db::open(&data_dir().join("glassbar.db")).expect("could not open glassbar.db"));
+    app.run(|app, e| if let RunEvent::Exit = e { bar::cleanup(app) });
 }

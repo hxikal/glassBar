@@ -53,9 +53,12 @@ export interface Config {
   performance: { mode: PerfMode; auto: boolean };
 }
 export type PerfMode = 'low' | 'normal' | 'high';
-/** One reading of GlassBar's own process tree: private RAM (MB), % of the whole CPU, 3D GPU %
- *  (null without GPU counters), and bytes GlassBar downloaded since start. */
-export interface PerfSample { at: number; ramMb: number; cpu: number; gpu: number | null; netBytes: number }
+/** One of GlassBar's processes, named the way Task Manager names it. */
+export interface ProcUsage { pid: number; name: string; ramMb: number; cpu: number; gpu: number | null }
+/** One reading of GlassBar and its WebView2 helpers: private working set (MB, Task Manager's
+ *  Memory), % of the whole CPU, 3D GPU % (null without GPU counters), bytes GlassBar downloaded
+ *  since start, and the same per process (only on the newest sample; they add up to the totals). */
+export interface PerfSample { at: number; ramMb: number; cpu: number; gpu: number | null; netBytes: number; procs: ProcUsage[] }
 /** The mode in force; `reason` is Auto's why, only while Auto is on. */
 export interface PerfState { mode: PerfMode; auto: boolean; reason: string | null }
 /** A real charger plug/unplug. `percent` is null on a PC with no battery. */
@@ -129,7 +132,9 @@ export type CaptureDone =
   | { kind: 'error'; text: string };
 export interface OcrItem { id: number; at: number; text: string; mode: 'text' | 'code' | 'terminal'; engine: string }
 export interface PinTarget { path: string; args: string }
-export interface InstalledApp { name: string; path: string; args: string }
+/** A Start menu app. Store apps (Spotify, WhatsApp…) have an `aumid`: they start through it,
+ *  and `path` is their .exe inside WindowsApps. */
+export interface InstalledApp { name: string; path: string; args: string; aumid: string | null }
 export interface WifiNetwork { ssid: string; bars: number; secured: boolean; security: string; connected: boolean; saved: boolean }
 export interface BtDevice { id: string; name: string; kind: string; paired: boolean; connected: boolean; /** % when the connected device reports it */ battery: number | null }
 /** Keep awake: until = Unix ms, null = until turned off; screen = the screen stays on too. */
