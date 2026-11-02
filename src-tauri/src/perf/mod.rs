@@ -2,6 +2,7 @@
 //! A sampler measures GlassBar's processes every 5 s (1 s while the page is open), keeps an hour
 //! of samples, and decides the effective mode: the manual choice, or Auto's pick.
 pub mod auto;
+pub mod boost;
 pub mod suspend;
 pub mod usage;
 
@@ -78,10 +79,12 @@ pub fn refresh(app: &AppHandle) {
 
 pub fn start(app: AppHandle) {
     refresh(&app);
+    boost::restore(&app); // a Boost before a crash or power cut may have left apps lowered
     std::thread::spawn(move || {
         let mut meter = usage::Meter::new();
         let mut last = Instant::now();
         loop {
+            boost::note_foreground();
             let snap = meter.sample();
             let now = crate::db::now_ms();
             let s = PerfSample { at: now, ram_mb: snap.ram_mb, cpu: snap.cpu, gpu: snap.gpu,

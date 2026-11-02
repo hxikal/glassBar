@@ -1,7 +1,7 @@
 <script lang="ts">
   import { chargerTone, deviceTone } from '../lib/sound';
   import { availableMonitors, type Monitor } from '@tauri-apps/api/window';
-  import { Bell, BellRing, Copy, DatabaseBackup, Gauge, Info, LayoutGrid, MapPin, Palette, PanelBottom, Power, Trash2, Users, Volume2 } from '@lucide/svelte';
+  import { Bell, BellRing, Copy, DatabaseBackup, Gauge, HardDrive, Info, LayoutGrid, MapPin, Palette, PanelBottom, Power, Trash2, Users, Volume2 } from '@lucide/svelte';
   import { profile, store, update } from '../lib/config.svelte';
   import { events, ipc, type Config } from '../lib/ipc';
   import { ALERT_DEFAULTS, type DockAlertsCfg } from './dockAlert';
@@ -12,6 +12,7 @@
   import About from './About.svelte';
   import AppearanceSettings from './AppearanceSettings.svelte';
   import PerformanceSettings from './PerformanceSettings.svelte';
+  import StorageSettings from './StorageSettings.svelte';
 
   // The menu, in groups. Names are also the ?section= / openSettings() keys.
   type Item = readonly [name: string, icon: typeof Info, description: string];
@@ -28,6 +29,7 @@
     ]],
     ['System', [
       ['Performance', Gauge, 'What GlassBar uses, and how often widgets refresh.'],
+      ['Storage', HardDrive, 'What GlassBar keeps on disk, and cleaning it up.'],
       ['Location', MapPin, 'Where you are, for weather and prayer times.'],
       ['Startup', Power, 'What happens when you sign in to Windows.'],
       ['Profiles', Users, 'Sets of widgets and dock settings you can switch between.'],
@@ -226,6 +228,9 @@
 
     {:else if section === 'Performance'}
       <PerformanceSettings />
+
+    {:else if section === 'Storage'}
+      <StorageSettings />
 
     {:else if section === 'Widgets'}
       <WidgetManager />

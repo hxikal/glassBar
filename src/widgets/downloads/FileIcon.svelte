@@ -1,7 +1,8 @@
 <script lang="ts" module>
   // The real Windows icon for a file (cached per type in Rust; per path here).
-  import { ipc } from '../../lib/ipc';
+  import { events, ipc } from '../../lib/ipc';
   const cache = new Map<string, Promise<string | null>>();
+  events.boostFree(() => cache.clear());
   const iconOf = (path: string) => { if (!cache.has(path)) cache.set(path, ipc.fileIcon(path).catch(() => null)); return cache.get(path)!; };
 </script>
 
