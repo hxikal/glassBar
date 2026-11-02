@@ -108,8 +108,7 @@
   // The prayer alert says it for a few seconds (holdMs), with Stop adhan while the adzan
   // plays; the adzan goes on after it, and the prayer widget and its panel can stop it too.
 
-  // The charger's switch is the older `chargerFlash`; the Companion also rides the charger
-  // event, so the switch is checked here rather than in Rust.
+  // The charger's switch is the older `chargerFlash`, checked here rather than in Rust.
   const enabled = (k: AlertKind) => (k === 'charger' ? store.config?.chargerFlash !== false : alertCfg[k] !== false);
   const current = () => (alert && !leaving ? alert.kind : null);
   function clearAlertTimers() { alertTimers.forEach(clearTimeout); alertTimers = []; }

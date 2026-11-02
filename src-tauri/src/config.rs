@@ -288,7 +288,7 @@ impl Default for Config {
 /// v3 folded the Disk widget into the System Monitor; v4 the Tray widget into Quick Settings.
 /// v10: opacity became "how solid the dock is" on top of the Windows material (it was the
 /// acrylic tint, which Windows 11 ignores): 0 keeps the old native look.
-pub const CURRENT_VERSION: u32 = 11;
+pub const CURRENT_VERSION: u32 = 12;
 
 /// Migration helper: widget `from` became part of widget `into`. Its settings (mapped by
 /// `map`) are merged into the existing `into` widget, or it turns into one in place.
@@ -443,6 +443,10 @@ impl Config {
         if self.version < 11 {
             // The Ask Claude and AI Usage widgets were removed.
             for p in self.profiles.values_mut() { p.widgets.retain(|w| w.id != "ai" && w.id != "aiusage"); }
+        }
+        if self.version < 12 {
+            // The Companion widget was removed.
+            for p in self.profiles.values_mut() { p.widgets.retain(|w| w.id != "companion"); }
         }
         self.version = CURRENT_VERSION;
         if self.profiles.is_empty() {
@@ -779,6 +783,16 @@ mod tests {
         let mut c = Config::default();
         c.version = 10;
         c.profiles.get_mut("Default").unwrap().widgets = vec![w("music"), w("ai"), w("aiusage"), w("clock")];
+        let ids: Vec<String> = c.normalized().profiles["Default"].widgets.iter().map(|w| w.id.clone()).collect();
+        assert_eq!(ids, vec!["music", "clock"]);
+    }
+
+    #[test]
+    fn v12_drops_the_removed_companion_widget() {
+        let w = |id: &str| WidgetInst { id: id.into(), instance: format!("{id}-1"), size: "small".into(), settings: serde_json::Value::Null, enabled: true };
+        let mut c = Config::default();
+        c.version = 11;
+        c.profiles.get_mut("Default").unwrap().widgets = vec![w("music"), w("companion"), w("clock")];
         let ids: Vec<String> = c.normalized().profiles["Default"].widgets.iter().map(|w| w.id.clone()).collect();
         assert_eq!(ids, vec!["music", "clock"]);
     }
