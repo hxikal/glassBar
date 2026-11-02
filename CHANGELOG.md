@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.11 — 2026-11-02
+
+### New
+- **Settings › Storage** shows what GlassBar keeps on your PC, widget by widget, with a total. Each row offers only the cleanups that fit it, says what it removes and how much, and asks first. The database is backed up before any cleanup, and the newest backup is always kept.
+- **Boost** (Settings › Performance and the System Monitor panel) frees memory held by idle background apps and can lower background apps that hog the CPU. It never closes or kills anything on its own; "Close apps I'm not using" is a separate list you tick.
+- **Choose the azan voice** in Waktu Solat: Madina with rain (the new default), Madina (Nabawi), Jeddah (Al-Zaili) or Classic. Short adzan stops at each voice's own takbir pause. Your own recording still replaces the voice.
+- **Water** shows the time to the next reminder, and the panel says when reminders are off, with a Turn on button.
+- **App Folders** show 2–4 folders on the dock (3 by default) with a "+n" chip that opens All folders. Right-click a folder there to open or delete it.
+- **Waktu Solat:** Tasbih pin and hide buttons in its panel, and switches in the panel options.
+
+### Fixed
+- **Volume follows the mouse wheel smoothly** on the sound and music pills and panels; it no longer jumps back mid-scroll.
+- **An adzan replaced by another** (Test pressed twice) no longer ends early: Stop stays, and paused music resumes only at the real end.
+
+### Removed
+- **The Companion widget.** It is dropped from saved profiles.
+
 ## 0.6.10 — 2026-11-02
 
 ### Fixed
