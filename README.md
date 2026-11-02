@@ -4,6 +4,24 @@ GlassBar is a lightweight, customizable glass taskbar for Windows 10/11, built w
 
 The bar can dock to any edge or float. You can drag it, resize it, and edit it iPhone-style. It supports profiles and light/dark/auto themes with Windows acrylic blur.
 
+![The GlassBar dock: apps, music, Quick Settings, capture tools, system monitor, prayer times and more](docs/images/dock.png)
+
+## See it in action
+
+Click a widget on the dock and its panel opens right above it. When there are more widgets than fit, the dock scrolls.
+
+![Opening the System Monitor, Time Progress, Countdowns and Timer panels from the dock](docs/images/demo.gif)
+
+Everything is set up in **Settings** (right-click the dock › Settings…): where the dock sits, the theme, which widgets are on it, notifications, sounds, profiles and more. The window follows your Appearance theme.
+
+![GlassBar Settings, Bar page](docs/images/settings.png)
+
+## Download
+
+Get the latest installer from [Releases](https://github.com/msolehinunijaya/glassBar/releases/latest) (`GlassBar_x.y.z_x64-setup.exe`, or the `.msi`). GlassBar updates itself after that.
+
+Uninstalling keeps your settings and widgets in `%APPDATA%\GlassBar`, so a reinstall picks up where you left off. Delete that folder for a clean removal.
+
 ## Widgets
 
 **Desktop**
