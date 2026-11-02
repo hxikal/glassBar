@@ -52,7 +52,7 @@ Uninstalling keeps your settings and widgets in `%APPDATA%\GlassBar`, so a reins
 **Location**
 - **Weather:** colourful pill; dashboard with feels-like, humidity, wind, rain chance, a sunrise/sunset arc, hourly and 3-day forecast (Open-Meteo).
 - **Currency Converter:** live rates (ExchangeRate-API, Frankfurter as fallback), cached for an hour, with favourite pairs.
-- **Waktu Solat:** prayer times by JAKIM zone (auto-detected), with Aladhan outside Malaysia. Shows a countdown and can alert you with an azan: Madina with rain (Muhammad Marwan Qassas, the default), a classic recording, or your own file. The panel shows the Hijri date (from Maghrib, the next day's); a Tasbih counter sits beside the pill and in the panel.
+- **Waktu Solat:** prayer times by JAKIM zone (auto-detected), with Aladhan outside Malaysia. Shows a countdown and can alert you with an azan: Madina with rain (Muhammad Marwan Qassas, the default), Madina without rain, Jeddah (Abdullah Al-Zaili), a classic recording, or your own file. The panel shows the Hijri date (from Maghrib, the next day's); a Tasbih counter sits beside the pill and in the panel.
 - **IPU (Air Quality):** live Air Pollutant Index from the nearest JAS/DOE station, with haze alerts.
 
 **OCR & AI**

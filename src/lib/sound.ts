@@ -1,6 +1,8 @@
 import { emit } from '@tauri-apps/api/event';
 import classicUrl from '../assets/adhan.ogg?url';
 import madinaUrl from '../assets/adhan-madina.ogg?url';
+import nabawiUrl from '../assets/adhan-nabawi.ogg?url';
+import zailiUrl from '../assets/adhan-zaili.ogg?url';
 // Alert sounds. The chime is synthesized, so no audio file ships with the app.
 let ctx: AudioContext | null = null;
 let idle: ReturnType<typeof setTimeout>;
@@ -97,6 +99,10 @@ function finish(p: typeof current) {
 export const ADHANS = {
   // Muhammad Marwan Qassas (Madinah) over rain; the pause is at 43.3-46.5 s.
   madina: { label: 'Madina, with rain', url: madinaUrl, short: 45 },
+  // Muhammad Marwan Qassas, Masjid an-Nabawi; the pause is at 43.5-47.2 s.
+  nabawi: { label: 'Madina', url: nabawiUrl, short: 46 },
+  // Abdullah Al-Zaili, Masjid Al-Furqan, Jeddah (raised 4 dB to match); the pause is at 36-40 s.
+  zaili: { label: 'Jeddah, Abdullah Al-Zaili', url: zailiUrl, short: 39 },
   // "Beautiful adhan" by Adam-synagda, Wikimedia Commons, CC0; the pause is at 43.0-43.7 s.
   classic: { label: 'Classic', url: classicUrl, short: 43.3 },
 };
