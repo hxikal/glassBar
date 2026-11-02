@@ -13,11 +13,14 @@
   let q = $state('');
   const shown = $derived((installed ?? []).filter((a) => a.name.toLowerCase().includes(q.toLowerCase())).slice(0, 60));
   const pinnedKeys = $derived(new Set(settings.pinned.map((p) => keyOf(p.path))));
+  const pinnedIds = $derived(new Set(settings.pinned.map((p) => p.aumid).filter(Boolean)));
+  const isPinned = (a: InstalledApp) => pinnedKeys.has(keyOf(a.path)) || (!!a.aumid && pinnedIds.has(a.aumid));
 
-  function pin(t: PinTarget) {
+  function pin(t: PinTarget & { aumid?: string | null; name?: string }) {
     error = '';
-    if (pinnedKeys.has(keyOf(t.path))) { error = `${nameOf(t.path)} is already pinned.`; return; }
-    save({ pinned: [...settings.pinned, { path: t.path, args: t.args || undefined }] });
+    if (pinnedKeys.has(keyOf(t.path)) || (!!t.aumid && pinnedIds.has(t.aumid))) { error = `${t.name ?? nameOf(t.path)} is already pinned.`; return; }
+    // Store apps keep their name: their .exe can be a launcher (Spotify: SpotifyMigrator.exe).
+    save({ pinned: [...settings.pinned, { path: t.path, args: t.args || undefined, ...(t.aumid ? { aumid: t.aumid, name: t.name } : {}) }] });
   }
   async function addTyped() {
     const p = path.trim().replace(/^"|"$/g, '');
@@ -77,7 +80,7 @@
 <ul>
   {#each settings.pinned as p, i (p.path + i)}
     <li>
-      <span class="ellipsis" title={p.path}><b>{nameOf(p.path)}</b> <span class="dim">{p.path}{p.args ? ` ${p.args}` : ''}</span></span>
+      <span class="ellipsis" title={p.path}><b>{p.name ?? nameOf(p.path)}</b> <span class="dim">{p.path}{p.args ? ` ${p.args}` : ''}</span></span>
       <span class="acts">
         <button class="icon-btn" aria-label="Move up" disabled={i === 0} onclick={() => move(i, -1)}><ArrowUp size={14} /></button>
         <button class="icon-btn" aria-label="Move down" disabled={i === settings.pinned.length - 1} onclick={() => move(i, 1)}><ArrowDown size={14} /></button>
@@ -100,12 +103,11 @@
   {#if !installed}<p class="dim">Reading the Start menu…</p>{/if}
   <div class="inst">
     {#each shown as a (a.path + a.args)}
-      <button class="ia" disabled={pinnedKeys.has(keyOf(a.path))} onclick={() => pin(a)} title={a.path}>
-        <span class="ellipsis">{a.name}</span><span class="dim">{pinnedKeys.has(keyOf(a.path)) ? 'Pinned' : 'Pin'}</span>
+      <button class="ia" disabled={isPinned(a)} onclick={() => pin(a)} title={a.path}>
+        <span class="ellipsis">{a.name}</span><span class="dim">{isPinned(a) ? 'Pinned' : 'Pin'}</span>
       </button>
     {/each}
   </div>
-  <p class="dim small">Store apps without a program file can't be pinned by path yet: pin them from the bar while they're running.</p>
 </details>
 
 <style>

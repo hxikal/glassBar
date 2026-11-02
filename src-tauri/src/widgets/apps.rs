@@ -31,7 +31,27 @@ pub async fn app_browse(app: AppHandle) -> Result<Option<PinTarget>, String> {
 }
 
 #[tauri::command]
-pub async fn apps_installed() -> Vec<InstalledApp> { blocking(|| shell().installed_apps()).await.unwrap_or_default() }
+pub async fn apps_installed() -> Vec<InstalledApp> { blocking(installed).await.unwrap_or_default() }
+
+/// Listing the apps takes ~2 s (asking Windows for its Store apps), too slow for a search box:
+/// answer from the last list and refresh it in the background when it's over a minute old.
+pub fn installed() -> Vec<InstalledApp> {
+    use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
+    use std::time::{Duration, Instant};
+    static LAST: Mutex<Option<(Instant, Vec<InstalledApp>)>> = Mutex::new(None);
+    static BUSY: AtomicBool = AtomicBool::new(false);
+    let scan = || { let v = shell().installed_apps(); *LAST.lock().unwrap() = Some((Instant::now(), v.clone())); v };
+    let last = LAST.lock().unwrap().clone();
+    match last {
+        None => scan(),
+        Some((at, v)) => {
+            if at.elapsed() > Duration::from_secs(60) && !BUSY.swap(true, Ordering::Relaxed) {
+                std::thread::spawn(move || { scan(); BUSY.store(false, Ordering::Relaxed); });
+            }
+            v
+        }
+    }
+}
 
 /// Which of these paths still exist (pinned apps that were uninstalled show as missing).
 /// A Store app whose versioned folder vanished after an update still counts while installed.

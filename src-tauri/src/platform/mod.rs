@@ -328,8 +328,10 @@ pub trait Screen: Send + Sync {
     fn ocr(&self, bgra: &[u8], w: u32, h: u32) -> Res<Vec<Vec<Word>>>;
 }
 
+/// An app from the Start menu. Store apps carry their AppUserModelID (`aumid`): that's how
+/// they're started, and `path` is their .exe so pins match their running windows.
 #[derive(Serialize, Clone, Debug)]
-pub struct InstalledApp { pub name: String, pub path: String, pub args: String }
+pub struct InstalledApp { pub name: String, pub path: String, pub args: String, pub aumid: Option<String> }
 
 #[derive(Serialize, Clone, Debug)]
 pub struct WifiNetwork { pub ssid: String, pub bars: u8, pub secured: bool, pub security: String, pub connected: bool, pub saved: bool }

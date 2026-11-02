@@ -203,7 +203,13 @@ impl Shell for WinShell {
     fn aumid_for_path(&self, path: &str) -> Option<String> { packages::aumid_for_path(path) }
     fn aumid_icon(&self, aumid: &str) -> Option<String> { windows_list::aumid_icon(aumid) }
     fn resolve_shortcut(&self, lnk: &str) -> Option<(String, String)> { shortcuts::resolve(lnk) }
-    fn installed_apps(&self) -> Vec<InstalledApp> { shortcuts::installed() }
+    fn installed_apps(&self) -> Vec<InstalledApp> {
+        // Start menu shortcuts, plus Store apps (Spotify, WhatsApp…), which have none.
+        let mut apps = shortcuts::installed();
+        apps.extend(packages::installed());
+        apps.sort_by_key(|a| a.name.to_lowercase());
+        apps
+    }
     fn exe_icon(&self, exe: &str) -> Option<String> { windows_list::exe_icon(exe) }
     fn window_icon(&self, id: isize) -> Option<String> { windows_list::window_icon(id) }
 }
