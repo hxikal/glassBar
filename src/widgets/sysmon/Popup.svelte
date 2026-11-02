@@ -10,6 +10,7 @@
   import { bytes, letter, level, levelColor, pickDrives, usedPct } from './disk';
   import { liveDrives } from './drives.svelte';
   import RecycleCard from './RecycleCard.svelte';
+  import Boost from '../../lib/Boost.svelte';
 
   let { instance, settings }: PopupProps<SysmonSettings> = $props();
   const s = liveSamples();
@@ -42,6 +43,8 @@
   <div class="card c"><span class="dim h"><ArrowDownUp size={13} /> Network</span><b class="small">↓ {rate(last?.rxBps ?? 0)}<br />↑ {rate(last?.txBps ?? 0)}</b>
     <Sparkline values={s.list.map((x) => x.rxBps)} max={netMax} width={130} height={40} color="#64d2ff" /></div>
 </div>
+
+<Boost compact />
 
 <h4 class="dim h"><HardDrive size={13} /> Storage</h4>
 {#each drives.list as d (d.mount)}

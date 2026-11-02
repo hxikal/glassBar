@@ -238,7 +238,11 @@ pub enum PerfMode { Low, #[default] Normal, High }
 /// The chosen mode; with `auto` on, GlassBar picks Normal or Low itself.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Performance { pub mode: PerfMode, pub auto: bool }
+pub struct Performance {
+    pub mode: PerfMode, pub auto: bool,
+    /// Apps Boost never trims or lowers, by exe name ("Spotify.exe" or "spotify").
+    pub never_touch: Vec<String>,
+}
 
 /// show: banners on (else a Windows toast) · seconds: 3/5/8/10 · position: "auto" (next
 /// to the dock) or "corner" · on_click: "highlight" or "open" (also open the panel) ·
@@ -527,15 +531,15 @@ mod tests {
     #[test]
     fn performance_defaults_to_normal_manual() {
         let c: Config = serde_json::from_str(r#"{"version":11}"#).unwrap();
-        assert_eq!(c.performance, Performance { mode: PerfMode::Normal, auto: false });
+        assert_eq!(c.performance, Performance { mode: PerfMode::Normal, auto: false, never_touch: vec![] });
     }
 
     #[test]
     fn performance_round_trips_lowercase() {
         let mut c = Config::default();
-        c.performance = Performance { mode: PerfMode::Low, auto: true };
+        c.performance = Performance { mode: PerfMode::Low, auto: true, never_touch: vec![] };
         let s = serde_json::to_string(&c).unwrap();
-        assert!(s.contains(r#""performance":{"mode":"low","auto":true}"#));
+        assert!(s.contains(r#""performance":{"mode":"low","auto":true,"neverTouch":[]}"#));
         assert_eq!(serde_json::from_str::<Config>(&s).unwrap().performance, c.performance);
     }
 

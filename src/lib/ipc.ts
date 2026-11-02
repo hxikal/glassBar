@@ -73,9 +73,22 @@ export interface Config {
   dockAlerts: import('../app/dockAlert').DockAlertsCfg;
   banners: Banners;
   /** Settings › Performance: the chosen mode; with `auto` GlassBar picks Normal or Low itself. */
-  performance: { mode: PerfMode; auto: boolean };
+  performance: { mode: PerfMode; auto: boolean; /** Apps Boost never touches, by exe name. */ neverTouch?: string[] };
 }
 export type PerfMode = 'low' | 'normal' | 'high';
+/** Settings › Storage (storage.rs). */
+export type StorageGroup = 'widget' | 'app' | 'leftover' | 'other';
+export interface StorageItem { name: string; bytes: number; modified: number; dir: boolean }
+export interface StorageAction { id: string; label: string; detail: string; bytes: number; destructive: boolean }
+export interface StorageRow { group: StorageGroup; name: string; bytes: number; dbBytes: number; note: string; items: StorageItem[]; actions: StorageAction[] }
+/** `webview`: [folder, bytes, cache bytes] of WebView2's own folder, outside `dir`. */
+export interface StorageReport { dir: string; total: number; rows: StorageRow[]; webview: [string, number, number] | null }
+export interface StorageCleaned { freed: number; backup: string | null; report: StorageReport }
+/** Boost (perf/boost.rs). */
+export type BoostSkip = 'system' | 'service' | 'protected' | 'security' | 'elevated' | 'neverTouch' | 'foreground' | 'fullscreen' | 'audio' | 'recent' | 'busy';
+export interface BoostReport { at: number; before: number; after: number; total: number; trimmed: number; trimmedBytes: number;
+  top: { name: string; bytes: number }[]; ownBytes: number; lowered: string[]; skipped: [BoostSkip, number][] }
+export interface IdleApp { exe: string; name: string; ram: number; windows: number }
 /** One of GlassBar's processes, named the way Task Manager names it. */
 export interface ProcUsage { pid: number; name: string; ramMb: number; cpu: number; gpu: number | null }
 /** One reading of GlassBar and its WebView2 helpers: private working set (MB, Task Manager's
@@ -337,6 +350,13 @@ export const ipc = {
   perfState: () => invoke<PerfState>('perf_state'),
   /** The Performance page is open: sample every second (a lease; call every 2 s). */
   perfWatch: () => invoke<void>('perf_watch'),
+  storageScan: () => invoke<StorageReport>('storage_scan'),
+  storageClean: (id: string) => invoke<StorageCleaned>('storage_clean', { id }),
+  /** Trim idle apps' memory (never closes anything); `lowerHogs` also lowers background CPU hogs. */
+  boostRun: (lowerHogs: boolean) => invoke<BoostReport>('boost_run', { lowerHogs }),
+  boostIdleApps: () => invoke<IdleApp[]>('boost_idle_apps'),
+  /** A normal close request (the app may ask to save); returns which closed and which stayed. */
+  boostClose: (exes: string[]) => invoke<{ closed: string[]; stillOpen: string[] }>('boost_close', { exes }),
   /** Is the auto-hidden bar slid away right now? */
   barAway: () => invoke<boolean>('bar_away'),
   disksList: () => invoke<DiskInfo[]>('disks_list'),
@@ -491,6 +511,8 @@ export const events = {
   settingsSection: (cb: (s: string) => void) => listen<string>('settings:section', (e) => cb(e.payload)),
   sysmonSample: (cb: (s: Sample) => void) => listen<Sample>('sysmon:sample', (e) => cb(e.payload)),
   perfSample: (cb: (s: PerfSample) => void) => listen<PerfSample>('perf:sample', (e) => cb(e.payload)),
+  /** Boost ran: drop in-memory caches (icons refill when shown). */
+  boostFree: (cb: () => void) => listen('boost:free', () => cb()),
   /** The auto-hidden bar slid away (true) or back in (false). */
   magnifyFrame: (cb: (icons: MagIcon[]) => void) => listen<MagIcon[]>('magnify:frame', (e) => cb(e.payload)),
   magnifyReset: (cb: () => void) => own<null>('magnify:reset', () => cb()),

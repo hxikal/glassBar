@@ -14,6 +14,7 @@ mod config;
 mod db;
 mod net;
 mod perf;
+mod storage;
 mod platform;
 mod widgets;
 
@@ -239,7 +240,7 @@ fn main() {
             widgets::solat::solat_days, widgets::solat::solat_zones, widgets::solat::solat_test_sound,
             widgets::tasbih::tasbih_get, widgets::tasbih::tasbih_add, widgets::tasbih::tasbih_reset,
             widgets::ipu::ipu_get,
-            perf::perf_history, perf::perf_state, perf::perf_watch, bar::bar_away,
+            perf::perf_history, perf::perf_state, perf::perf_watch, storage::storage_scan, storage::storage_clean, perf::boost::boost_run, perf::boost::boost_idle_apps, perf::boost::boost_close, bar::bar_away,
             widgets::sysmon::sysmon_history, widgets::sysmon::battery_get, widgets::sysmon::disks_list,
             widgets::sysmon::power_get, widgets::sysmon::power_set_mode, widgets::sysmon::power_use_balanced,
             widgets::screentime::screentime_today, widgets::screentime::screentime_week,

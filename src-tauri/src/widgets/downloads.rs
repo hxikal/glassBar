@@ -218,6 +218,9 @@ pub fn downloads_drag(app: AppHandle, window: tauri::WebviewWindow, path: String
 
 static ICONS: Mutex<Option<HashMap<String, Option<String>>>> = Mutex::new(None);
 
+/// Boost: drop the icon cache; icons are read again when shown.
+pub fn free_icons() { *ICONS.lock().unwrap() = None; }
+
 /// The real Windows icon for a file: per type, but per file for apps/shortcuts/icons.
 #[tauri::command]
 pub async fn file_icon(path: String) -> Option<String> {

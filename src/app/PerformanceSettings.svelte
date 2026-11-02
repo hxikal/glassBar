@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import { Check } from '@lucide/svelte';
   import Sparkline from '../lib/Sparkline.svelte';
+  import Boost from '../lib/Boost.svelte';
   import { update } from '../lib/config.svelte';
   import { events, ipc, type PerfMode, type PerfSample, type ProcUsage } from '../lib/ipc';
   import { perf } from '../lib/perf.svelte';
@@ -92,6 +93,10 @@
     Apps you open from the dock aren't counted. Network counts data GlassBar downloaded.</p>
 </div>
 
+<h2>Boost</h2>
+<Boost />
+
+<h2>Mode</h2>
 <div class="group">
   <label class="field"><span>Auto</span>
     <input type="checkbox" checked={perf.auto} onchange={(e) => setAuto(e.currentTarget.checked)} />

@@ -298,7 +298,8 @@ pub fn apply_later(app: &AppHandle, after_s: &[u64]) {
 }
 
 /// Undo everything that outlives the process: reserved space and hidden taskbar.
-pub fn cleanup(_app: &AppHandle) {
+pub fn cleanup(app: &AppHandle) {
+    crate::perf::boost::restore(app);
     shell().windows_osd_restore();
     shell().suppress_native_animations(false); // give apps their own minimize animation back
     crate::platform::tray().stop();
