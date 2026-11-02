@@ -1,14 +1,12 @@
 <script lang="ts">
-  import { getVersion } from '@tauri-apps/api/app';
+  // Settings › About › Updates: check, download and install a new version.
   import { relaunch } from '@tauri-apps/plugin-process';
   import { check, type Update } from '@tauri-apps/plugin-updater';
 
-  let version = $state('');
   let update = $state<Update | null>(null);
   let status = $state('');
   let busy = $state(false);
   let progress = $state(0);
-  getVersion().then((v) => (version = v));
 
   async function checkNow() {
     busy = true;
@@ -40,8 +38,7 @@
   }
 </script>
 
-<div class="group">
-  <div class="field"><span>Installed version</span><b>{version}</b></div>
+<div class="group" id="updates">
   <div class="field">
     <span>{status || 'GlassBar checks for updates when it starts and once a day.'}</span>
     <button class="btn" disabled={busy} onclick={checkNow}>Check now</button>
@@ -56,9 +53,5 @@
 </div>
 
 <style>
-  .group { background: var(--panel); border-radius: calc(14px * var(--rs)); padding: 6px 16px; border: 1px solid var(--line-soft); }
-  .field { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; }
-  .field + .field { border-top: 1px solid var(--line-soft); }
-  .hint { font-size: 12px; color: var(--fg-dim); }
   .notes { white-space: pre-wrap; }
 </style>

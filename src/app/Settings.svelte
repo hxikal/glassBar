@@ -1,27 +1,66 @@
 <script lang="ts">
   import { chargerTone, deviceTone } from '../lib/sound';
   import { availableMonitors, type Monitor } from '@tauri-apps/api/window';
-  import { Copy, Trash2 } from '@lucide/svelte';
+  import { Bell, BellRing, Copy, DatabaseBackup, Gauge, Info, LayoutGrid, MapPin, Palette, PanelBottom, Power, Trash2, Users, Volume2 } from '@lucide/svelte';
   import { profile, store, update } from '../lib/config.svelte';
   import { events, ipc, type Config } from '../lib/ipc';
   import { ALERT_DEFAULTS, type DockAlertsCfg } from './dockAlert';
   /** The two sides of the dock, named for the edge it is on: screen-edge side, windows side. */
   const GAP_SIDES = { bottom: ['below', 'above'], top: ['above', 'below'], left: ['left of', 'right of'], right: ['right of', 'left of'] } as const;
-  import Updates from './Updates.svelte';
   import LocationSettings from './LocationSettings.svelte';
   import WidgetManager from './widgets/WidgetManager.svelte';
   import About from './About.svelte';
   import AppearanceSettings from './AppearanceSettings.svelte';
   import PerformanceSettings from './PerformanceSettings.svelte';
 
-  const sections = ['Bar', 'Appearance', 'Widgets', 'Performance', 'Location', 'Notifications', 'Dock alerts', 'Sounds', 'Profiles', 'Startup', 'Updates', 'Backup', 'About'] as const;
+  // The menu, in groups. Names are also the ?section= / openSettings() keys.
+  type Item = readonly [name: string, icon: typeof Info, description: string];
+  const MENU: readonly (readonly [group: string, items: readonly Item[]])[] = [
+    ['Dock', [
+      ['Bar', PanelBottom, 'Where the dock sits, how big it is and how it behaves.'],
+      ['Appearance', Palette, 'Theme, design style, materials and colours.'],
+      ['Widgets', LayoutGrid, 'Pick, order and size the widgets on your dock.'],
+    ]],
+    ['Alerts', [
+      ['Notifications', Bell, 'Pop-up banners and Do Not Disturb.'],
+      ['Dock alerts', BellRing, 'Short messages the dock shows by itself.'],
+      ['Sounds', Volume2, 'Charger and USB device sounds.'],
+    ]],
+    ['System', [
+      ['Performance', Gauge, 'What GlassBar uses, and how often widgets refresh.'],
+      ['Location', MapPin, 'Where you are, for weather and prayer times.'],
+      ['Startup', Power, 'What happens when you sign in to Windows.'],
+      ['Profiles', Users, 'Sets of widgets and dock settings you can switch between.'],
+    ]],
+    ['GlassBar', [
+      ['Backup', DatabaseBackup, 'Save your settings to text, or bring them back.'],
+      ['About', Info, 'Version, updates and what\'s new.'],
+    ]],
+  ];
+  const items = MENU.flatMap(([, list]) => list);
+  const sections = items.map(([s]) => s);
   import { SOURCE_WIDGET } from '../lib/notify';
   // Prayer time, Pomodoro and Timer are told by the dock itself (Settings > Dock alerts), not
   // by banners: not listed here (Rust: alerts::DOCK_SOURCES).
   const DOCK_SOURCES = ['solat', 'pomodoro', 'timer'];
   const BANNER_SOURCES = [...Object.entries(SOURCE_WIDGET).filter(([k]) => !DOCK_SOURCES.includes(k)).map(([k, v]) => [k, v.label] as const), ['update', 'Updates'] as const];
-  type Section = (typeof sections)[number];
-  const asSection = (s: string | null) => sections.find((x) => x === s);
+  type Section = string;
+  // Updates now lives in About; old links to it still land there.
+  const asSection = (s: string | null) => sections.find((x) => x === (s === 'Updates' ? 'About' : s));
+  const page = $derived(items.find(([s]) => s === section)!);
+  const PageIcon = $derived(page[1]);
+  let mainEl: HTMLElement;
+  function go(s: Section) { section = s; mainEl?.scrollTo(0, 0); }
+  // Up/Down (and Home/End) move through the menu, like a list.
+  function navKey(e: KeyboardEvent) {
+    const i = sections.indexOf(section);
+    const j = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: sections.length - 1 }[e.key];
+    if (j === undefined) return;
+    e.preventDefault();
+    const s = sections[(j + sections.length) % sections.length];
+    go(s);
+    (e.currentTarget as HTMLElement).closest('nav')?.querySelector<HTMLElement>(`[data-s="${s}"]`)?.focus();
+  }
   // Opened on a section (e.g. from a widget's location label): ?section=… or, when already open, an event.
   let section = $state<Section>(asSection(new URLSearchParams(location.search).get('section')) ?? 'Bar');
   events.settingsSection((s) => { const x = asSection(s); if (x) section = x; });
@@ -80,17 +119,29 @@
 </script>
 
 <div class="settings">
-  <nav>
-    <div class="brand">GlassBar</div>
-    {#each sections as s (s)}
-      <button class:sel={section === s} onclick={() => (section = s)}>{s}</button>
+  <nav aria-label="Settings sections">
+    <div class="brand">Settings</div>
+    {#each MENU as [group, list] (group)}
+      <div class="ngroup" role="group" aria-labelledby="ng-{group}">
+        <span class="nlabel" id="ng-{group}">{group}</span>
+        {#each list as [s, Icon] (s)}
+          <button class="nitem" class:sel={section === s} data-s={s} aria-current={section === s ? 'page' : undefined}
+                  tabindex={section === s ? 0 : -1} onclick={() => go(s)} onkeydown={navKey}>
+            <span class="nico"><Icon size={15} strokeWidth={2.2} /></span>{s}
+          </button>
+        {/each}
+      </div>
     {/each}
   </nav>
 
-  <main>
-    <h1>{section}</h1>
+  <main bind:this={mainEl}>
+    <header class="phead">
+      <span class="pico"><PageIcon size={22} /></span>
+      <div><h1>{section}</h1><p>{page[2]}</p></div>
+    </header>
 
     {#if section === 'Bar'}
+      <h2>Placement</h2>
       <div class="group">
         <div class="field"><span>Position</span>
           <div class="seg">
@@ -112,6 +163,9 @@
             {#each monitors as m, i (i)}<option value={i}>{i + 1}: {m.name ?? 'Display'} ({m.size.width}×{m.size.height})</option>{/each}
           </select>
         </div>
+      </div>
+      <h2>Size</h2>
+      <div class="group">
         <div class="field"><span>Height</span>
           <div class="seg">
             {#each ['compact', 'normal', 'large'] as const as s (s)}
@@ -127,19 +181,25 @@
           </div>
         </div>
         <p class="hint">How wide the bar is on the left or right edge ({bar.edge === 'left' || bar.edge === 'right' ? 'in use now' : 'used when you move it there'}). Wider shows labels next to the values.</p>
-        <div class="field"><span>Length {Math.round(lenNow * 100)}%</span>
+        <div class="field"><span>Length <b class="val">{Math.round(lenNow * 100)}%</b></span>
           <input type="range" min="0.2" max="1" step="0.01" value={lenNow} aria-label="Dock length"
                  oninput={(e) => preview({ length: +e.currentTarget.value })} onchange={(e) => { const v = +e.currentTarget.value; commit((b) => (b.length = v)); }} />
         </div>
-        <div class="field"><span>Space {sides[0]} the dock {outerNow}px</span>
+      </div>
+      <h2>Spacing</h2>
+      <div class="group">
+        <div class="field"><span>Space {sides[0]} the dock <b class="val">{outerNow}px</b></span>
           <input type="range" min="0" max="48" step="1" value={outerNow} aria-label="Space between the dock and the screen edge"
                  oninput={(e) => preview({ gap: +e.currentTarget.value, inner })} onchange={(e) => { const v = +e.currentTarget.value; commit((b) => { b.gapInner = inner; b.gap = v; }); }} />
         </div>
-        <div class="field"><span>Space {sides[1]} the dock {innerNow}px</span>
+        <div class="field"><span>Space {sides[1]} the dock <b class="val">{innerNow}px</b></span>
           <input type="range" min="0" max="48" step="1" value={innerNow} aria-label="Space between the dock and your windows"
                  oninput={(e) => preview({ inner: +e.currentTarget.value })} onchange={(e) => { const v = +e.currentTarget.value; commit((b) => (b.gapInner = v)); }} />
         </div>
         <p class="hint">The first is towards the screen edge, the second towards your windows (with "Reserve screen space" on, maximised windows stop there). They follow the dock to any edge.</p>
+      </div>
+      <h2>Behaviour</h2>
+      <div class="group">
         <label class="field"><span>Auto-hide</span>
           <input type="checkbox" checked={bar.autoHide} onchange={(e) => setBar((b) => { b.autoHide = e.currentTarget.checked; b.floating = null; })} />
         </label>
@@ -149,8 +209,9 @@
         </label>
         <p class="hint">Maximized windows stop at the bar instead of covering it.</p>
       </div>
+      <h2>Windows taskbar</h2>
       <div class="group">
-        <div class="field"><span>Windows taskbar</span>
+        <div class="field"><span>The Windows taskbar while GlassBar runs</span>
           <select value={bar.nativeTaskbar} onchange={(e) => setBar((b) => (b.nativeTaskbar = e.currentTarget.value as typeof b.nativeTaskbar))}>
             <option value="show">Leave as is</option>
             <option value="autohide">Auto-hide</option>
@@ -173,6 +234,7 @@
       <LocationSettings />
 
     {:else if section === 'Profiles'}
+      <h2>Your profiles</h2>
       <div class="group">
         {#each Object.keys(c.profiles) as name (name)}
           <div class="wrow">
@@ -185,6 +247,7 @@
           </div>
         {/each}
       </div>
+      <h2>New profile</h2>
       <div class="wrow">
         <input class="grow" placeholder="New profile name, e.g. Gaming" bind:value={newName} onkeydown={(e) => e.key === 'Enter' && newProfile()} />
         <button class="btn" onclick={newProfile}><Copy size={14} /> Duplicate current</button>
@@ -192,12 +255,14 @@
       <p class="hint">Switch profiles from here or from the tray icon menu.</p>
 
     {:else if section === 'Notifications'}
+      <h2>Do Not Disturb</h2>
       <div class="group">
         <label class="field"><span>Do Not Disturb</span>
           <input type="checkbox" checked={c.dnd} onchange={(e) => set((c) => (c.dnd = e.currentTarget.checked))} />
         </label>
         <p class="hint">On: no banners, toasts or sounds. Everything still goes into the Notification Center list.</p>
       </div>
+      <h2>Pop-up banners</h2>
       <div class="group">
         <label class="field"><span>Show pop-up banners</span>
           <input type="checkbox" checked={c.banners.show} onchange={(e) => set((c) => (c.banners.show = e.currentTarget.checked))} />
@@ -218,7 +283,11 @@
           <label class="field"><span>Play the alert sound with the banner</span>
             <input type="checkbox" checked={c.banners.sound} onchange={(e) => set((c) => (c.banners.sound = e.currentTarget.checked))} />
           </label>
-          <h2>Banners per widget</h2>
+        {/if}
+      </div>
+      {#if c.banners.show}
+        <h2>Banners per widget</h2>
+        <div class="group">
           {#each BANNER_SOURCES as [k, label] (k)}
             <label class="field"><span>{label}</span>
               <input type="checkbox" checked={!c.banners.muted.includes(k)}
@@ -226,13 +295,14 @@
             </label>
           {/each}
           <p class="hint">Off: no banner for that widget (it still goes into the list).</p>
-        {/if}
-      </div>
+        </div>
+      {/if}
 
     {:else if section === 'Dock alerts'}
       {@const da = { ...ALERT_DEFAULTS, ...(c.dockAlerts ?? {}) }}
       {@const setDa = (p: Partial<DockAlertsCfg>) => set((c) => (c.dockAlerts = { ...da, ...p }))}
       <p class="hint">For a moment the whole dock shows one thing, then goes back to your widgets. Hover to keep it, click to dismiss. Not over full-screen apps, except prayer time. No notification.</p>
+      <h2>What the dock tells you</h2>
       <div class="group">
         {#each [
           ['charger', 'Charger', 'The charge level when you plug the charger in or unplug it.'],
@@ -254,6 +324,7 @@
           <p class="hint">{hint}</p>
         {/each}
       </div>
+      <h2>Options</h2>
       <div class="group">
         <label class="field"><span>Hide Windows' own volume and brightness pop-up</span>
           <input type="checkbox" checked={da.hideWindowsOsd} disabled={!da.volume && !da.brightness} onchange={(e) => setDa({ hideWindowsOsd: e.currentTarget.checked })} />
@@ -273,6 +344,7 @@
       </div>
 
     {:else if section === 'Sounds'}
+      <h2>Charger</h2>
       <div class="group">
         <label class="field"><span>Charger sounds (plugged in / unplugged)</span>
           <input type="checkbox" checked={c.deviceSounds.charger} onchange={(e) => set((c) => (c.deviceSounds.charger = e.currentTarget.checked))} />
@@ -283,6 +355,7 @@
         </div>
         <p class="hint">Plays only when the charger state really changes (Windows power events), never repeatedly while it stays plugged in.</p>
       </div>
+      <h2>USB devices</h2>
       <div class="group">
         <label class="field"><span>Sound when a USB device is connected</span>
           <input type="checkbox" checked={c.deviceSounds.connect} onchange={(e) => set((c) => (c.deviceSounds.connect = e.currentTarget.checked))} />
@@ -290,7 +363,7 @@
         <label class="field"><span>Sound when a USB device is removed</span>
           <input type="checkbox" checked={c.deviceSounds.disconnect} onchange={(e) => set((c) => (c.deviceSounds.disconnect = e.currentTarget.checked))} />
         </label>
-        <div class="field"><span>Volume {Math.round(c.deviceSounds.volume * 100)}%</span>
+        <div class="field"><span>Volume <b class="val">{Math.round(c.deviceSounds.volume * 100)}%</b></span>
           <input type="range" min="0.05" max="1" step="0.05" value={c.deviceSounds.volume} onchange={(e) => set((c) => (c.deviceSounds.volume = +e.currentTarget.value))} />
         </div>
         <div class="field"><span>Preview</span>
@@ -307,10 +380,8 @@
         </label>
       </div>
 
-    {:else if section === 'Updates'}
-      <Updates />
-
     {:else if section === 'Backup'}
+      <h2>Export</h2>
       <div class="group">
         <div class="wrow">
           <button class="btn" onclick={async () => (exported = await ipc.exportConfig())}>Export configuration</button>
@@ -318,32 +389,83 @@
         </div>
         {#if exported}<textarea readonly rows="10">{exported}</textarea>{/if}
       </div>
+      <h2>Import</h2>
       <div class="group">
-        <b>Import</b>
         <textarea rows="8" placeholder="Paste exported JSON here" bind:value={importText}></textarea>
         <button class="btn" disabled={!importText.trim()} onclick={doImport}>Import and apply</button>
       </div>
       {#if message}<p class="hint">{message}</p>{/if}
 
     {:else if section === 'About'}
-      <About onupdates={() => (section = 'Updates')} />
+      <About />
     {/if}
   </main>
 </div>
 
 <style>
+  /* Settings colours come from the Appearance theme: --tint is the theme's (or your custom)
+     background, so the page, its cards and the menu follow it; the menu also takes a little
+     of the accent so it reads as its own surface. */
+  :global(html[data-window='settings']) {
+    user-select: text;
+    --settings-bg: rgb(var(--tint));
+    --panel: color-mix(in srgb, rgb(var(--tint)), #fff 6%);
+    --side-bg: color-mix(in srgb, var(--accent) 10%, color-mix(in srgb, rgb(var(--tint)), #000 34%));
+    --side-sel: color-mix(in srgb, var(--accent) 24%, transparent);
+    --field-bg: color-mix(in srgb, rgb(var(--tint)), #000 22%);
+  }
+  :global(html[data-window='settings'][data-theme='light']) {
+    --panel: color-mix(in srgb, rgb(var(--tint)), #fff 85%);
+    --side-bg: color-mix(in srgb, var(--accent) 9%, color-mix(in srgb, rgb(var(--tint)), #000 5%));
+    --side-sel: color-mix(in srgb, var(--accent) 16%, transparent);
+    --field-bg: rgb(var(--tint));
+  }
   :global(html[data-window='settings'] body) { background: var(--settings-bg); }
-  :global(:root[data-theme='light']) { --settings-bg: #f2f2f7; --panel: #fff; }
-  :global(:root[data-theme='dark']) { --settings-bg: #1c1c1e; --panel: #2c2c2e; }
-  :global(html[data-window='settings']) { user-select: text; }
 
   .settings { display: flex; height: 100%; }
-  nav { width: 190px; padding: 18px 10px; display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--line-soft); }
-  .brand { font-weight: 600; font-size: 16px; padding: 0 10px 14px; }
-  nav button { text-align: left; padding: 8px 12px; border-radius: calc(10px * var(--rs)); }
-  nav button:hover { background: var(--pill); }
-  nav .sel { background: var(--accent); color: var(--on-accent); }
-  main { flex: 1; overflow: auto; padding: 18px 28px 40px; }
+
+  /* ---- Menu ---- */
+  nav {
+    width: 214px; flex: none; overflow-y: auto; padding: 14px 10px 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--side-bg); border-right: 1px solid var(--line-soft);
+  }
+  .brand { font-weight: 600; font-size: 17px; padding: 2px 10px 0; letter-spacing: -0.01em; }
+  .ngroup { display: flex; flex-direction: column; gap: 1px; }
+  .nlabel { font-size: 11.5px; font-weight: 600; color: var(--fg-3); padding: 0 10px 3px; }
+  .nitem {
+    display: flex; align-items: center; gap: 10px; text-align: left;
+    padding: 4px 10px 4px 6px; border-radius: calc(10px * var(--rs)); color: var(--fg-dim);
+  }
+  .nitem:hover { background: var(--pill-hover); color: var(--fg); }
+  .nitem:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .nico {
+    display: grid; place-items: center; width: 26px; height: 26px; flex: none;
+    border-radius: calc(8px * var(--rs)); background: var(--pill); color: var(--fg);
+  }
+  .nitem.sel { background: var(--side-sel); color: var(--fg); font-weight: 600; }
+  .nitem.sel .nico { background: var(--accent); color: var(--on-accent); }
+  /* Glass themes: the menu takes a soft wash of the accent, like light through glass. */
+  :global(html[data-window='settings'][data-preset='glass']) nav,
+  :global(html[data-window='settings'][data-preset='liquid']) nav {
+    background:
+      radial-gradient(120% 50% at 0% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+      var(--side-bg);
+  }
+  /* Liquid Glass: the chosen item is a white lens with the accent icon, like its "on" tiles. */
+  :global(html[data-window='settings'][data-preset='liquid']) .nitem.sel { background: color-mix(in srgb, #fff 16%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+  :global(html[data-window='settings'][data-preset='liquid']) .nitem.sel .nico { background: #fff; color: var(--accent-ink); }
+
+  /* ---- Page ---- */
+  main { flex: 1; min-width: 0; overflow: auto; padding: 18px 32px 48px; }
+  main > :global(*) { max-width: 760px; }
+  .phead { display: flex; align-items: center; gap: 14px; margin: 4px 0 6px; }
+  .pico {
+    display: grid; place-items: center; width: 44px; height: 44px; flex: none;
+    border-radius: calc(12px * var(--rs)); background: var(--accent); color: var(--on-accent);
+  }
+  .phead p { margin: 2px 0 0; color: var(--fg-dim); font-size: 13px; }
+  :global(html[data-theme='light'] .settings .hint.warn) { color: #b25e00; }
   /* Used by widget panels in every window too. */
   :global(.btn) { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: calc(9px * var(--rs)); background: var(--accent); color: var(--on-accent); }
   .btn.ghost { background: var(--pill); color: var(--fg); padding: 5px 12px; }
@@ -352,24 +474,39 @@
   :global(.btn:disabled) { opacity: 0.5; }
   /* Shared by every section component (Location, About, widget manager…). */
   .settings :global {
-    h1 { font-size: 22px; font-weight: 600; margin: 0 0 16px; }
-    h2 { font-size: 15px; font-weight: 600; margin: 22px 0 10px; }
-    .group { background: var(--panel); border-radius: calc(14px * var(--rs)); padding: 6px 16px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line-soft); }
-    .field { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; }
-    .field + .field { border-top: 1px solid var(--line-soft); }
+    h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+    h2 { font-size: 13px; font-weight: 600; color: var(--fg-dim); margin: 24px 0 8px 4px; }
+    .group {
+      background: var(--panel); border-radius: calc(14px * var(--rs)); padding: 4px 18px; margin-bottom: 14px;
+      display: flex; flex-direction: column; gap: 0; border: 1px solid var(--line-soft);
+    }
+    .field { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; min-height: 48px; }
+    .field > span:first-child { font-weight: 500; line-height: 1.35; }
+    .group > .field ~ .field { border-top: 1px solid var(--line-soft); }
     .field.off { opacity: 0.5; }
-    .field input[type='range'] { width: 220px; }
+    .field input[type='range'] { width: 220px; accent-color: var(--accent); }
+    input:where([type='range'], [type='radio']) { accent-color: var(--accent); }
+    .wrow .hint { margin: 0; }
+    /* Slider values: a small badge next to the label instead of loose text. */
+    .val {
+      display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: var(--r-chip);
+      font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+      background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--fg);
+    }
+    .hint { font-size: 12.5px; line-height: 1.45; color: var(--fg-dim); margin: -6px 0 10px; max-width: 68ch; }
     .hint.warn { color: #ff9f0a; }
-    .hint { font-size: 12px; color: var(--fg-dim); margin: -4px 0 6px; }
-    .seg { display: flex; gap: 2px; padding: 3px; border-radius: calc(10px * var(--rs)); background: var(--pill); }
-    .seg button { padding: 5px 12px; border-radius: calc(8px * var(--rs)); text-transform: capitalize; }
-    .seg .sel { background: var(--accent); color: var(--on-accent); }
-    select, input:not([type]), textarea, .grow { padding: 6px 10px; border-radius: calc(8px * var(--rs)); border: 1px solid var(--line-soft); background: var(--settings-bg); }
-    textarea { width: 100%; font-family: Consolas, monospace; font-size: 12px; resize: vertical; }
+    main > .hint { margin: 10px 4px 12px; }
+    .seg { display: flex; gap: 2px; padding: 3px; border-radius: calc(10px * var(--rs)); background: var(--field-bg); border: 1px solid var(--line-soft); }
+    .seg button { padding: 5px 12px; border-radius: calc(8px * var(--rs)); text-transform: capitalize; color: var(--fg-dim); }
+    .seg button:hover:not(.sel):not(:disabled) { color: var(--fg); background: var(--pill-hover); }
+    .seg .sel { background: var(--accent); color: var(--on-accent); font-weight: 500; }
+    :where(select, input:not([type]), textarea, .grow) { padding: 7px 10px; border-radius: calc(8px * var(--rs)); border: 1px solid var(--line-soft); background: var(--field-bg); }
+    :where(button, select, input, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    textarea { width: 100%; font-family: Consolas, monospace; font-size: 12px; resize: vertical; margin: 10px 0; }
     /* Choice buttons (Notifications): plain, the chosen one in the accent colour. */
     .segs { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
-    .segs .btn { background: var(--pill); color: var(--fg); padding: 6px 10px; font-size: 12px; }
-    .segs .btn.on { background: var(--accent); color: var(--on-accent); }
+    .segs .btn { background: var(--field-bg); color: var(--fg); padding: 6px 10px; font-size: 12px; border: 1px solid var(--line-soft); }
+    .segs .btn.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
     .wrow { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
     .wrow b { flex: 1; font-weight: 500; }
     .grow { flex: 1; }
