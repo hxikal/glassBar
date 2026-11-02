@@ -13,6 +13,8 @@ export const keyOf = (path: string) =>
 export const isWebApp = (aumid?: string | null) => !!aumid && aumid.includes('._crx_');
 /** Group identity of a window or pin: web apps by their app ID, everything else by program. */
 export const keyFor = (path: string, aumid?: string | null) => (isWebApp(aumid) ? `webapp:${aumid!.toLowerCase()}` : keyOf(path));
+/** A pinned Store app and a window of it, by app ID. */
+export const sameApp = (pin: Pin | undefined, w: AppWindow) => !!pin?.aumid && pin.aumid === w.aumid;
 export const nameOf = (path: string) => path.split(/[\\/]/).pop()?.replace(/\.(exe|lnk)$/i, '') ?? path;
 
 /** Pinned apps first (in pin order), then other running programs in first-seen order. */
@@ -21,7 +23,10 @@ export function group(pins: Pin[], windows: AppWindow[]): Group[] {
   for (const pin of pins) { const k = keyFor(pin.path, pin.aumid); out.set(k, { key: k, path: pin.path, name: pin.name ?? nameOf(pin.path), pin, windows: [], aumid: pin.aumid }); }
   for (const w of windows) {
     if (!w.exe) continue;
-    const k = keyFor(w.exe, w.aumid);
+    // A Store app pinned from the app list can name a launcher .exe (Spotify: SpotifyMigrator.exe)
+    // while its window runs another: match those by app ID.
+    const own = keyFor(w.exe, w.aumid);
+    const k = out.has(own) ? own : ([...out.values()].find((g) => sameApp(g.pin, w))?.key ?? own);
     // A web app is named after its window ("YouTube Music"), not after the browser.
     if (!out.has(k)) out.set(k, { key: k, path: w.exe, name: isWebApp(w.aumid) ? w.title : nameOf(w.exe), windows: [] });
     const g = out.get(k)!;

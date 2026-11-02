@@ -44,7 +44,7 @@ pub fn installed() -> Vec<InstalledApp> {
         if ["uninstall", "readme", "help", "documentation", "website", "release notes"].iter().any(|w| low.contains(w)) { return None; }
         let (path, args) = resolve(&l.to_string_lossy())?;
         if !path.to_lowercase().ends_with(".exe") || !std::path::Path::new(&path).exists() { return None; }
-        seen.insert(format!("{}|{}", path.to_lowercase(), args)).then_some(InstalledApp { name, path, args })
+        seen.insert(format!("{}|{}", path.to_lowercase(), args)).then_some(InstalledApp { name, path, args, aumid: None })
     }).collect();
     apps.sort_by_key(|a| a.name.to_lowercase());
     apps

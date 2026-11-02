@@ -12,6 +12,7 @@
   import { ArrowRightLeft, Calculator, Check, Copy, Globe, History, Ruler, Search } from '@lucide/svelte';
   import { profile } from '../../lib/config.svelte';
   import FileIcon from '../downloads/FileIcon.svelte';
+  import { iconOf } from '../folders/appIcons.svelte';
   import { formatNumber, parse, type Answer } from './query';
   import { labelOf } from './units';
 
@@ -79,7 +80,7 @@
       setTimeout(() => { if (copied === r.id) copied = null; }, 1200);
     } else if (r.kind === 'app' && r.app) {
       close();
-      ipc.appLaunch(r.app.path, r.app.args).catch(() => {});
+      ipc.appLaunch(r.app.path, r.app.args, r.app.aumid).catch(() => {});
     } else if (r.kind === 'windows') {
       const text = q.trim();
       close();
@@ -115,7 +116,11 @@
     <button id="r-{r.id}" class="row {r.kind}" class:sel={i === sel} role="option" aria-selected={i === sel}
             onpointerenter={() => (sel = i)} onclick={() => act(r)}>
       <span class="ic">
-        {#if r.kind === 'app' && r.app}<FileIcon path={r.app.path} size={20} />
+        {#if r.kind === 'app' && r.app?.aumid}
+          <!-- Store apps: their registered icon (their .exe sits in a folder we can't read). -->
+          {@const src = iconOf({ path: r.app.path, aumid: r.app.aumid })}
+          {#if src}<img {src} alt="" width="20" height="20" draggable="false" />{:else}<FileIcon path={r.app.path} size={20} />{/if}
+        {:else if r.kind === 'app' && r.app}<FileIcon path={r.app.path} size={20} />
         {:else if r.kind === 'answer' && answer?.kind === 'fx'}<ArrowRightLeft size={16} />
         {:else if r.kind === 'answer' && (answer?.kind === 'unit' || answer?.kind === 'units')}<Ruler size={16} />
         {:else}{@const I = ICON[r.kind as keyof typeof ICON]}<I size={16} />{/if}

@@ -2,7 +2,7 @@
 // The same calls the App Launcher makes; each window fetches an icon once per program.
 import { events, ipc, type AppWindow } from '../../lib/ipc';
 import type { Pin } from '../apps/index';
-import { keyFor } from '../apps/groups';
+import { keyFor, sameApp } from '../apps/groups';
 import { pinKey } from './folders';
 
 const icons = $state<Record<string, string | null>>({});
@@ -28,6 +28,6 @@ export function liveWindows() {
   });
   return {
     /** Windows of this pinned program, oldest first. */
-    of: (p: Pin) => list.filter((w) => w.exe && keyFor(w.exe, w.aumid) === pinKey(p)).sort((a, b) => a.id - b.id),
+    of: (p: Pin) => list.filter((w) => w.exe && (keyFor(w.exe, w.aumid) === pinKey(p) || sameApp(p, w))).sort((a, b) => a.id - b.id),
   };
 }

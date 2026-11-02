@@ -14,7 +14,7 @@
   $effect(() => { ipc.appsInstalled().then((a) => (all = [...a].sort((x, y) => x.name.localeCompare(y.name)))).catch(() => (all = [])); });
   const inFolder = $derived(new Set(have.map(pinId)));
   const shown = $derived((all ?? []).filter((a) => !q.trim() || a.name.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 60));
-  const toPin = (a: InstalledApp): Pin => ({ path: a.path, args: a.args || undefined, name: a.name });
+  const toPin = (a: InstalledApp): Pin => ({ path: a.path, args: a.args || undefined, aumid: a.aumid ?? undefined, name: a.name });
   async function browse() {
     const t = await ipc.appBrowse().catch(() => null);
     if (t) add({ path: t.path, args: t.args || undefined });

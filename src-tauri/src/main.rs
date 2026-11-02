@@ -194,6 +194,8 @@ fn main() {
             // Started with Windows: monitors and Explorer may still be settling. Place again soon.
             bar::apply_later(h, &[3, 15]);
             health::start(h.clone());
+            // Ready before the first search or app picker opens.
+            std::thread::spawn(|| { widgets::apps::installed(); });
             Ok(())
         })
         .on_window_event(|w, e| match (w.label(), e) {

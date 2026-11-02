@@ -129,7 +129,9 @@ export type CaptureDone =
   | { kind: 'error'; text: string };
 export interface OcrItem { id: number; at: number; text: string; mode: 'text' | 'code' | 'terminal'; engine: string }
 export interface PinTarget { path: string; args: string }
-export interface InstalledApp { name: string; path: string; args: string }
+/** A Start menu app. Store apps (Spotify, WhatsApp…) have an `aumid`: they start through it,
+ *  and `path` is their .exe inside WindowsApps. */
+export interface InstalledApp { name: string; path: string; args: string; aumid: string | null }
 export interface WifiNetwork { ssid: string; bars: number; secured: boolean; security: string; connected: boolean; saved: boolean }
 export interface BtDevice { id: string; name: string; kind: string; paired: boolean; connected: boolean; /** % when the connected device reports it */ battery: number | null }
 /** Keep awake: until = Unix ms, null = until turned off; screen = the screen stays on too. */
