@@ -16,12 +16,15 @@ export function stateOf(place: string | undefined): string {
 /** Today's date as YYYY-MM-DD in local time. */
 export const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** Holidays for `state` ('' = national only) from `today` on, one per date and name. */
-export function upcoming(items: Holiday[], state: string, today: string): Holiday[] {
+/** Holidays for `state` ('' = national only), one per date and name. */
+export function forState(items: Holiday[], state: string): Holiday[] {
   const seen = new Set<string>();
-  return items.filter((h) => h.date >= today && (!h.states.length || (!!state && h.states.includes(state))))
+  return items.filter((h) => !h.states.length || (!!state && h.states.includes(state)))
     .filter((h) => { const k = h.date + h.name; return !seen.has(k) && !!seen.add(k); });
 }
+
+/** Those from `today` on. */
+export const upcoming = (items: Holiday[], state: string, today: string) => forState(items, state).filter((h) => h.date >= today);
 
 export function daysUntil(date: string, today: string): number {
   return Math.round((Date.parse(date) - Date.parse(today)) / 86_400_000);

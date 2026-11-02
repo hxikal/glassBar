@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Public holidays on the clock: on/off, state, how far ahead the pill shows one.
+  // The month grid (Hijri days, week numbers) and public holidays: on/off, state, how far ahead the pill shows one.
   import OptionsPopover from '../../lib/OptionsPopover.svelte';
   import type { ClockSettings } from './index';
   import { stateOf, STATES } from './holidays';
@@ -10,7 +10,9 @@
   const found = $derived(stateOf(here.s?.place?.name));
 </script>
 
-<OptionsPopover title="Public holidays" values={settings} save={(p) => save(p as Partial<ClockSettings>)} options={[
+<OptionsPopover title="Calendar & holidays" values={settings} save={(p) => save(p as Partial<ClockSettings>)} options={[
+  { type: 'toggle', key: 'calHijri', label: 'Hijri dates in the calendar', hint: 'Umm al-Qura day under each date' },
+  { type: 'toggle', key: 'calWeeks', label: 'Week numbers in the calendar' },
   { type: 'toggle', key: 'holidays', label: 'Show the next holiday on the clock', hint: 'Next to the clock when one is coming up' },
   { type: 'toggle', key: 'holidayList', label: 'Show the holiday list in the panel', hint: 'Upcoming holidays under the calendar' },
   { type: 'choice', key: 'holidayState', label: 'State', menu: true,
