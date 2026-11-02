@@ -274,7 +274,7 @@
 
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
   .choice { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; text-align: left;
-    border-radius: 12px; background: var(--panel); border: 1px solid var(--line-soft); }
+    border-radius: calc(12px * var(--rs)); background: var(--panel); border: 1px solid var(--line-soft); }
   .choice.sel { outline: 2px solid var(--accent); outline-offset: -1px; }
   .choice .hint { margin: 0; }
   .sw, .shape { width: 100%; height: 28px; border-radius: 8px; border: 1px solid var(--line-soft); margin-bottom: 4px; }
@@ -287,7 +287,6 @@
   .shape { background: var(--pill); border: 1.5px solid var(--fg-dim); width: 60%; }
 
   .ctl { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-  .val { font-weight: 500; color: var(--fg-dim); margin-left: 4px; font-variant-numeric: tabular-nums; }
   .rev { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--fg-dim); }
   .rev:hover { background: var(--pill-hover); color: var(--fg); }
   .seg button:disabled { opacity: 0.45; }

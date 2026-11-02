@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.9 — 2026-11-02
+
+### New
+- **A clearer Settings window.** The menu has an icon for every page and is sorted into four groups (Dock, Alerts, System, GlassBar), on its own colour so it stands apart from the page. Up and Down arrows move through it. Each page opens with a short line on what it controls, and long pages are split into titled cards (the Bar page: Placement, Size, Spacing, Behaviour, Windows taskbar).
+- **Settings follows your theme.** The menu, page and cards take their colours from Appearance: light or dark, your custom background colour, your accent and your design style's corners. Glass and Liquid Glass give the menu a soft wash of the accent.
+- **Updates moved into About.** About now shows the version, a Check now button for updates and What's new together.
+- **Easier to read:** on/off settings are switches, slider values sit in a small badge next to their name, and keyboard focus is clearly outlined.
+
+### Fixed
+- **Widgets › Search** no longer draws a box inside its box.
+- **Profiles:** the widget count lines up with the profile name.
+
 ## 0.6.8 — 2026-10-30
 
 ### New

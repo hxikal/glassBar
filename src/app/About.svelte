@@ -1,12 +1,13 @@
 <script lang="ts">
-  // Settings › About: which version this is, and what changed (from CHANGELOG.md).
+  // Settings › About: which version this is, updates, and what changed (from CHANGELOG.md).
   import { getVersion } from '@tauri-apps/api/app';
-  import { ExternalLink, RefreshCw } from '@lucide/svelte';
+  import { ExternalLink } from '@lucide/svelte';
   import md from '../../CHANGELOG.md?raw';
+  import icon from '../../app-icon.svg';
   import { ipc } from '../lib/ipc';
   import { boldParts, parseChangelog } from './changelog';
+  import Updates from './Updates.svelte';
 
-  let { onupdates }: { onupdates: () => void } = $props();
   let version = $state('');
   getVersion().then((v) => (version = v));
   const releases = parseChangelog(md);
@@ -14,16 +15,17 @@
 </script>
 
 <div class="group head">
-  <div class="name">
+  <img src={icon} alt="" width="56" height="56" />
+  <div class="id">
     <b>GlassBar</b>
     <span class="ver">Version {version || '…'}</span>
+    <span class="hint m0">A glass taskbar for Windows 11 with widgets.</span>
   </div>
-  <p class="hint m0">A glass taskbar for Windows 11 with widgets.</p>
-  <div class="acts">
-    <button class="btn plain" onclick={onupdates}><RefreshCw size={14} /> Check for updates</button>
-    <button class="btn plain" onclick={() => ipc.appLaunch('https://github.com/msolehinunijaya/glassBar/releases', '')}><ExternalLink size={14} /> Release notes on GitHub</button>
-  </div>
+  <button class="btn plain" onclick={() => ipc.appLaunch('https://github.com/msolehinunijaya/glassBar/releases', '')}><ExternalLink size={14} /> Release notes</button>
 </div>
+
+<h2>Updates</h2>
+<Updates />
 
 <h2>What's new</h2>
 {#each showAll ? releases : releases.slice(0, 1) as r (r.version)}
@@ -44,14 +46,14 @@
 {/if}
 
 <style>
-  .head { padding: 14px 16px; gap: 6px; }
-  .name { display: flex; align-items: baseline; gap: 10px; }
-  .name b { font-size: 18px; font-weight: 600; }
+  :global(.settings) .group.head { flex-direction: row; align-items: center; gap: 16px; padding: 16px 18px; }
+  .head img { flex: none; border-radius: calc(14px * var(--rs)); }
+  .id { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .id b { font-size: 18px; font-weight: 600; }
   .ver { font-variant-numeric: tabular-nums; color: var(--fg-dim); }
   .m0 { margin: 0; }
-  .acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; }
   .btn.plain { background: var(--pill); color: var(--fg); }
-  .rel { padding: 12px 16px 6px; gap: 2px; }
+  :global(.settings) .group.rel { padding: 12px 18px 6px; gap: 2px; }
   h3 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .now { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: var(--on-accent); }
   .date { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--fg-dim); }
