@@ -3,6 +3,9 @@
   import PanelHeader from '../../lib/PanelHeader.svelte';
   import FormatOptions from './FormatOptions.svelte';
   import WeatherOptions from './WeatherOptions.svelte';
+  import HolidayOptions from './HolidayOptions.svelte';
+  import { holidaysFor } from './holidays.svelte';
+  import { daysUntil, STATES, whenLabel, ymd } from './holidays';
   import Time from './ClockTime.svelte';
   import { date, timeText } from './prefs.svelte';
   import { dayState, type DayState } from './solar';
@@ -65,6 +68,14 @@
     return { ...info, icon: icons[info.state], tip: name + next + how };
   }
 
+  // ---- public holidays ----
+  const hol = holidaysFor(() => settings, () => clock.now);
+  let allHolidays = $state(false);
+  const yearAhead = $derived(ymd(new Date(today.getFullYear() + 1, today.getMonth(), today.getDate())));
+  const holList = $derived(hol.list.filter((h) => h.date < yearAhead).slice(0, allHolidays ? undefined : 5));
+  const holDay = (d: string) => new Date(d + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  const holOn = (d: number) => d ? hol.list.find((h) => h.date === ymd(new Date(month.getFullYear(), month.getMonth(), d))) : undefined;
+
   // ---- calendar (Monday-first) ----
   const cells = $derived.by(() => {
     const lead = (month.getDay() + 6) % 7;
@@ -91,6 +102,7 @@
 {#if showFormat}
   <div class="fmt"><FormatOptions {settings} save={(p) => updateWidgetSettings(instance, p)} /></div>
   <div class="fmt"><WeatherOptions {settings} save={(p) => updateWidgetSettings(instance, p)} /></div>
+  <div class="fmt"><HolidayOptions {settings} save={(p) => updateWidgetSettings(instance, p)} /></div>
 {/if}
 
 <div class="world">
@@ -140,9 +152,40 @@
   </div>
   <div class="grid">
     {#each weekdays as w, i (i)}<span class="wd dim">{w}</span>{/each}
-    {#each cells as d, i (i)}<span class="day" class:today={d && isToday(d)}>{d || ''}</span>{/each}
+    {#each cells as d, i (i)}
+      {@const h = holOn(d)}
+      <span class="day" class:today={d && isToday(d)} class:holiday={!!h} title={h?.name}>{d || ''}</span>
+    {/each}
   </div>
 </div>
+
+{#if settings.holidayList}
+<div class="hols">
+  <div class="wtitle">
+    <span class="dim">Public holidays</span>
+    <select class="hstate" value={settings.holidayState} title="Whose state holidays to include"
+            onchange={(e) => updateWidgetSettings(instance, { holidayState: e.currentTarget.value })}>
+      <option value="auto">{hol.state && settings.holidayState === 'auto' ? `${hol.state} (my location)` : 'My location'}</option>
+      {#each STATES as s (s)}<option value={s}>{s}</option>{/each}
+    </select>
+    <span class="grow"></span>
+    {#if hol.list.filter((h) => h.date < yearAhead).length > 5}
+      <button class="more" onclick={() => (allHolidays = !allHolidays)}>{allHolidays ? 'Less' : 'All'}</button>
+    {/if}
+  </div>
+  {#each holList as h (h.date + h.name)}
+    {@const n = daysUntil(h.date, hol.today)}
+    <div class="hrow" class:soon={n <= 7}>
+      <span class="hdate">{holDay(h.date)}</span>
+      <span class="ellipsis hn" title={h.states.length ? `${h.name} (${h.states.join(', ')})` : h.name}>{h.name}</span>
+      <span class="dim small">{whenLabel(n)}</span>
+    </div>
+  {:else}
+    <p class="dim small empty">No holidays loaded yet (needs the internet once a week).</p>
+  {/each}
+  {#if !hol.state}<p class="dim small empty">Only national holidays: pick your state above for state ones.</p>{/if}
+</div>
+{/if}
 
 <style>
   .hero { padding: 0 4px var(--s-3); }
@@ -183,4 +226,16 @@
   .wd { font-size: 11px; padding: 3px 0; }
   .day { padding: 5px 0; border-radius: 50%; font-variant-numeric: tabular-nums; font-size: 12px; }
   .today { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .holiday:not(.today) { color: #ff9f43; font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, #ff9f43 45%, transparent); }
+  .hols { margin-top: 10px; }
+  .hstate { font-size: 11px; padding: 2px 6px; border-radius: calc(8px * var(--rs)); border: 1px solid var(--line-soft); background: var(--pill); color: inherit; max-width: 170px; }
+  .grow { flex: 1; }
+  .hols .wtitle { gap: 6px; }
+  .more { font-size: 11px; padding: 2px 8px; border-radius: calc(8px * var(--rs)); color: var(--accent); }
+  .more:hover { background: var(--pill-hover); }
+  .hrow { display: flex; align-items: center; gap: var(--s-2); padding: 6px var(--s-3); border-radius: var(--r-inner); font-size: 12px; }
+  .hrow:hover { background: var(--pill-hover); }
+  .hdate { width: 78px; flex: none; font-variant-numeric: tabular-nums; }
+  .hn { flex: 1; min-width: 0; }
+  .soon .hdate { color: #ff9f43; font-weight: 600; }
 </style>

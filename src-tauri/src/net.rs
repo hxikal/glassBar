@@ -33,6 +33,14 @@ pub fn get_json(url: &str) -> Result<serde_json::Value, String> {
     serde_json::from_slice(b.as_ref()).map_err(|e| format!("bad response: {e}"))
 }
 
+/// GET a URL as text (e.g. an .ics calendar). Blocking, like `get_json`.
+pub fn get_text(url: &str) -> Result<String, String> {
+    let r = client().get(url).timeout(Duration::from_secs(30)).send().map_err(|e| format!("network: {e}"))?;
+    if !r.status().is_success() { return Err(format!("HTTP {}", r.status())); }
+    let b = read_body(r).map_err(|e| format!("bad response: {e}"))?;
+    Ok(String::from_utf8_lossy(b.as_ref()).into_owned())
+}
+
 /// GET JSON with extra headers: (HTTP status, body). The body is Null when it isn't JSON.
 pub fn get_json_h(url: &str, headers: &[(&str, &str)]) -> Result<(u16, serde_json::Value), String> {
     let mut rq = client().get(url).timeout(Duration::from_secs(30));

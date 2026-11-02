@@ -237,6 +237,7 @@ fn main() {
             widgets::trash::trash_items, widgets::trash::trash_restore, widgets::trash::trash_recycle, widgets::trash::trash_empty_confirm,
             widgets::focus::sw_get, widgets::focus::sw_toggle, widgets::focus::sw_lap, widgets::focus::sw_reset,
             widgets::location::location_status, widgets::location::location_clear, widgets::location::location_open_map, widgets::location::location_search, widgets::weather::weather_get,
+            widgets::holidays::holidays_get, widgets::devstack::devstack_status, widgets::devstack::devstack_toggle, widgets::devstack::devstack_open_laragon,
             widgets::solat::solat_days, widgets::solat::solat_zones, widgets::solat::solat_test_sound,
             widgets::tasbih::tasbih_get, widgets::tasbih::tasbih_add, widgets::tasbih::tasbih_reset,
             widgets::ipu::ipu_get,

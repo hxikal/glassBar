@@ -155,6 +155,10 @@ export type PowerMode = 'efficiency' | 'balanced' | 'performance';
 export interface PowerInfo { mode: PowerMode | null; saverOn: boolean | null; otherPlan: string | null }
 export interface Sample { cpu: number; mem: number; gpu: number | null; rxBps: number; txBps: number; at: number; cpuTemp: number | null }
 export interface Rates { base: string; rates: Record<string, number>; rateTime: number; fetchedAt: number; source: string; cached: boolean }
+/** A Malaysian public holiday; `states` empty = national. */
+export interface Holiday { date: string; name: string; states: string[] }
+export interface DevService { id: string; name: string; version: string; port: number; running: boolean; enabled: boolean }
+export interface DevStatus { found: boolean; root: string; www: string; services: DevService[]; sites: string[] }
 export interface WinRect { id: number; title: string; x: number; y: number; w: number; h: number }
 export interface SnapView { img: string; purpose: 'ocr' | 'region' | 'window' | 'scroll' | 'color' | 'display'; windows: WinRect[]; /** pointer in screenshot px */ cursor: [number, number] | null;
   /** each display in the shot (screenshot px): the overlay spans them all */ displays: [number, number, number, number][];
@@ -427,6 +431,10 @@ export const ipc = {
   micSetVolume: (volume: number) => invoke<void>('mic_set_volume', { volume }),
   micSetDefault: (id: string) => invoke<void>('mic_set_default', { id }),
   privacyInUse: () => invoke<InUse>('privacy_in_use'),
+  holidaysGet: (force = false) => invoke<{ items: Holiday[]; fetchedAt: number; cached: boolean }>('holidays_get', { force }),
+  devStatus: (root: string) => invoke<DevStatus>('devstack_status', { root }),
+  devToggle: (root: string, id: string, start: boolean) => invoke<void>('devstack_toggle', { root, id, start }),
+  devOpenLaragon: (root: string) => invoke<void>('devstack_open_laragon', { root }),
   fxRates: (base: string, force = false) => invoke<Rates>('fx_rates', { base, force }),
   ocrSnapStart: (purpose: SnapView['purpose'] = 'ocr') => invoke<void>('ocr_snap_start', { purpose }),
   ocrShot: () => invoke<SnapView | null>('ocr_shot'),

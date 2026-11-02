@@ -41,12 +41,20 @@ export interface ClockSettings {
   showWeather: boolean;
   weatherUnit: 'c' | 'f';
   weatherColorful: boolean;
+  /** Next Malaysian public holiday beside the clock (the panel always lists them). */
+  holidays: boolean;
+  /** The list of upcoming holidays in the clock's panel. */
+  holidayList: boolean;
+  /** 'auto' = the state of the shared location; else a state name (holidays.ts STATES). */
+  holidayState: string;
+  /** Show it on the clock when it is at most this many days away. */
+  holidayDays: '7' | '14' | '30';
 }
 
 export default defineWidget<ClockSettings>({
   id: 'clock',
   name: 'Clock & Date',
-  description: 'Time and date in your format, calendar, world clocks with day/night, weather',
+  description: 'Time and date in your format, calendar, world clocks with day/night, weather, Malaysian public holidays',
   category: 'productivity',
   icon: Clock,
   sizes: ['small', 'medium', 'large'],
@@ -55,8 +63,9 @@ export default defineWidget<ClockSettings>({
     hour12: false, ampm: 'PM', ampmSize: 'small', leadingZero: 'auto', showSeconds: false, worldSeconds: false,
     dateStyle: 'weekday', dateSep: '/', weekday: 'none', datePattern: 'ddd, D MMM', show: 'both', layout: 'inline', timeSide: 'left', stackAlign: 'center',
     dayNight: true, appearance: 'standard', zones: [], secondTz: '', showWeather: true, weatherUnit: 'c', weatherColorful: true,
+    holidays: true, holidayList: true, holidayState: 'auto', holidayDays: '14',
   },
   Pill,
-  Popup: { component: Popup, width: 340, height: 560 },
+  Popup: { component: Popup, width: 340, height: 640 },
   SettingsForm,
 });
