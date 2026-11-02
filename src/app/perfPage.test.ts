@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ago, changeList, fmtBytes, fmtMetric, fmtPct, netLastHour, pointAt, timeSeries } from './perfPage';
-const s = (netBytes: number) => ({ at: 0, ramMb: 0, cpu: 0, gpu: null, netBytes });
+const s = (netBytes: number) => ({ at: 0, ramMb: 0, cpu: 0, gpu: null, netBytes, procs: [] });
 describe('changeList', () => {
   const items = [{ name: 'Whole bar', perf: { low: 'paused' } }, { name: 'Equalizer', perf: { low: '15 fps', high: '60 fps' } }, { name: 'Clock' }, { name: 'Apps' }];
   it('lists what the mode changes, in order, and the rest A–Z', () => {
@@ -18,7 +18,7 @@ describe('formatting', () => {
 describe('timeSeries', () => {
   // 5 s samples while the page was closed, then 1 s samples once it opened: the graph must be
   // spaced by time, not by sample count.
-  const at = (t: number, ramMb: number, netBytes: number) => ({ at: t, ramMb, cpu: 0, gpu: null, netBytes });
+  const at = (t: number, ramMb: number, netBytes: number) => ({ at: t, ramMb, cpu: 0, gpu: null, netBytes, procs: [] });
   const samples = [at(0, 100, 0), at(5_000, 110, 100), at(60_000, 200, 300), at(61_000, 205, 350), at(62_000, 210, 360)];
   it('one point per 30 s, the highest reading in it, gaps carry the last value', () => {
     expect(timeSeries(samples, 'ram', 30_000)).toEqual([110, 110, 210]);
