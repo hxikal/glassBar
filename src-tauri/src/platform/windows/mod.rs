@@ -278,8 +278,8 @@ impl Power for WinPower {
 
 impl Gpu for WinGpu {
     fn usage(&self) -> Option<f32> { gpu::usage() }
-    fn usage_for(&self, pids: &[u32]) -> Option<f32> { gpu::usage_for(pids) }
-    fn private_bytes(&self, pid: u32) -> Option<u64> { procmem::private_bytes(pid) }
+    fn usage_each(&self, pids: &[u32]) -> Option<Vec<f32>> { gpu::usage_each(pids) }
+    fn private_ws(&self, pid: u32) -> Option<u64> { procmem::private_ws(pid) }
     fn cpu_temp_c(&self) -> Option<f32> { thermal::cpu_temp_c() }
 }
 

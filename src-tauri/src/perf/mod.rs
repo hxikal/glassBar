@@ -1,5 +1,5 @@
 //! Settings › Performance: what GlassBar itself costs, and how light it runs.
-//! A sampler measures the process tree every 5 s (1 s while the page is open), keeps an hour
+//! A sampler measures GlassBar's processes every 5 s (1 s while the page is open), keeps an hour
 //! of samples, and decides the effective mode: the manual choice, or Auto's pick.
 pub mod auto;
 pub mod suspend;
@@ -19,7 +19,11 @@ const LEASE_MS: i64 = 5_000;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct PerfSample { pub at: i64, pub ram_mb: f32, pub cpu: f32, pub gpu: Option<f32>, pub net_bytes: u64 }
+pub struct PerfSample {
+    pub at: i64, pub ram_mb: f32, pub cpu: f32, pub gpu: Option<f32>, pub net_bytes: u64,
+    /// Process by process; in the history only the newest sample keeps it.
+    pub procs: Vec<usage::ProcUsage>,
+}
 
 /// The mode in force. `reason` (Auto's why, in words) only while Auto is on.
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -37,6 +41,12 @@ pub fn period_ms(now_ms: i64, watched_at_ms: i64) -> u64 { if now_ms - watched_a
 
 pub fn trim(h: &mut VecDeque<PerfSample>, now_ms: i64) {
     while h.front().is_some_and(|s| s.at < now_ms - HISTORY_MS) { h.pop_front(); }
+}
+
+/// Add a sample; the one before it drops its process list (an hour of those is dead weight).
+pub fn push(h: &mut VecDeque<PerfSample>, s: PerfSample) {
+    if let Some(prev) = h.back_mut() { prev.procs.clear(); }
+    h.push_back(s);
 }
 
 /// The mode Rust-side work should follow (sysmon period, freeing hidden windows).
@@ -74,8 +84,9 @@ pub fn start(app: AppHandle) {
         loop {
             let snap = meter.sample();
             let now = crate::db::now_ms();
-            let s = PerfSample { at: now, ram_mb: snap.ram_mb, cpu: snap.cpu, gpu: snap.gpu, net_bytes: crate::net::bytes_received() };
-            { let mut h = HIST.lock().unwrap(); h.push_back(s.clone()); trim(&mut h, now); }
+            let s = PerfSample { at: now, ram_mb: snap.ram_mb, cpu: snap.cpu, gpu: snap.gpu,
+                                 net_bytes: crate::net::bytes_received(), procs: snap.procs };
+            { let mut h = HIST.lock().unwrap(); push(&mut h, s.clone()); trim(&mut h, now); }
             let _ = app.emit_to("settings", "perf:sample", &s);
             let dt = last.elapsed().as_millis().min(u32::MAX as u128) as u32;
             last = Instant::now();
@@ -114,9 +125,18 @@ mod tests {
     }
 
     #[test] fn history_keeps_one_hour() {
-        let s = |at| PerfSample { at, ram_mb: 0.0, cpu: 0.0, gpu: None, net_bytes: 0 };
+        let s = |at| PerfSample { at, ram_mb: 0.0, cpu: 0.0, gpu: None, net_bytes: 0, procs: vec![] };
         let mut h: VecDeque<_> = [s(0), s(1_000), s(3_600_500)].into();
         trim(&mut h, 3_601_000);
         assert_eq!(h.iter().map(|x| x.at).collect::<Vec<_>>(), vec![1_000, 3_600_500]);
+    }
+
+    #[test] fn only_the_newest_sample_keeps_its_processes() {
+        let p = usage::ProcUsage { pid: 1, name: "GlassBar".into(), ram_mb: 1.0, cpu: 0.0, gpu: None };
+        let s = |at| PerfSample { at, ram_mb: 1.0, cpu: 0.0, gpu: None, net_bytes: 0, procs: vec![p.clone()] };
+        let mut h = VecDeque::new();
+        push(&mut h, s(1));
+        push(&mut h, s(2));
+        assert_eq!(h.iter().map(|x| x.procs.len()).collect::<Vec<_>>(), vec![0, 1]);
     }
 }
