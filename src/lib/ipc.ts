@@ -9,6 +9,29 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 const own = <T>(name: string, cb: (p: T) => void) => listen<T>(name, (e) => cb(e.payload), { target: getCurrentWindow().label });
 import type { Edge } from './geometry';
 
+/** Send values one at a time, newest wins: values that arrive while one is in flight replace
+ *  each other, and only the last is sent next. `busy()` is true while sending. */
+export function latestOnly<T>(send: (v: T) => Promise<unknown>) {
+  let next: { v: T } | null = null, sending = false;
+  return {
+    async push(v: T) {
+      next = { v };
+      if (sending) return;
+      sending = true;
+      try { while (next) { const { v } = next; next = null; await send(v).catch(() => {}); } } finally { sending = false; }
+    },
+    busy: () => sending,
+  };
+}
+// Volume from a slider or the wheel. Parallel requests could land out of order, so they go one
+// at a time. Windows echoes every step back as audio:changed; while we are still setting (and
+// briefly after), those echoes are older than the level shown and are dropped -- otherwise the
+// level jumps back mid-scroll and the next step starts from the wrong value.
+const volume = latestOnly((v: number) => invoke('audio_set_volume', { volume: v }));
+let volumeAt = -Infinity;
+const VOLUME_ECHO_MS = 300;
+const volumeSettling = () => volume.busy() || performance.now() - volumeAt < VOLUME_ECHO_MS;
+
 export type WidgetSize = 'small' | 'medium' | 'large';
 export interface WidgetInst { id: string; instance: string; size: WidgetSize; settings: any; /** false = off: kept with its settings, not on the dock */ enabled?: boolean }
 export interface BarCfg {
@@ -50,9 +73,22 @@ export interface Config {
   dockAlerts: import('../app/dockAlert').DockAlertsCfg;
   banners: Banners;
   /** Settings › Performance: the chosen mode; with `auto` GlassBar picks Normal or Low itself. */
-  performance: { mode: PerfMode; auto: boolean };
+  performance: { mode: PerfMode; auto: boolean; /** Apps Boost never touches, by exe name. */ neverTouch?: string[] };
 }
 export type PerfMode = 'low' | 'normal' | 'high';
+/** Settings › Storage (storage.rs). */
+export type StorageGroup = 'widget' | 'app' | 'leftover' | 'other';
+export interface StorageItem { name: string; bytes: number; modified: number; dir: boolean }
+export interface StorageAction { id: string; label: string; detail: string; bytes: number; destructive: boolean }
+export interface StorageRow { group: StorageGroup; name: string; bytes: number; dbBytes: number; note: string; items: StorageItem[]; actions: StorageAction[] }
+/** `webview`: [folder, bytes, cache bytes] of WebView2's own folder, outside `dir`. */
+export interface StorageReport { dir: string; total: number; rows: StorageRow[]; webview: [string, number, number] | null }
+export interface StorageCleaned { freed: number; backup: string | null; report: StorageReport }
+/** Boost (perf/boost.rs). */
+export type BoostSkip = 'system' | 'service' | 'protected' | 'security' | 'elevated' | 'neverTouch' | 'foreground' | 'fullscreen' | 'audio' | 'recent' | 'busy';
+export interface BoostReport { at: number; before: number; after: number; total: number; trimmed: number; trimmedBytes: number;
+  top: { name: string; bytes: number }[]; ownBytes: number; lowered: string[]; skipped: [BoostSkip, number][] }
+export interface IdleApp { exe: string; name: string; ram: number; windows: number }
 /** One of GlassBar's processes, named the way Task Manager names it. */
 export interface ProcUsage { pid: number; name: string; ramMb: number; cpu: number; gpu: number | null }
 /** One reading of GlassBar and its WebView2 helpers: private working set (MB, Task Manager's
@@ -119,6 +155,14 @@ export type PowerMode = 'efficiency' | 'balanced' | 'performance';
 export interface PowerInfo { mode: PowerMode | null; saverOn: boolean | null; otherPlan: string | null }
 export interface Sample { cpu: number; mem: number; gpu: number | null; rxBps: number; txBps: number; at: number; cpuTemp: number | null }
 export interface Rates { base: string; rates: Record<string, number>; rateTime: number; fetchedAt: number; source: string; cached: boolean }
+/** Claude plan limit window: five_hour, seven_day, or "seven_day:<model>". */
+export interface AiWindow { key: string; name: string; usedPct: number; resetsAt: number | null }
+export interface AiLimits { windows: AiWindow[]; breakdown: { name: string; pct: number }[]; plan: string; fetchedAt: number; cached: boolean }
+export interface AiDay { date: string; input: number; output: number; cacheWrite: number; cacheRead: number; byModel: Record<string, number> }
+/** A Malaysian public holiday; `states` empty = national. */
+export interface Holiday { date: string; name: string; states: string[] }
+export interface DevService { id: string; name: string; version: string; port: number; running: boolean; enabled: boolean }
+export interface DevStatus { found: boolean; root: string; www: string; services: DevService[]; sites: string[] }
 export interface WinRect { id: number; title: string; x: number; y: number; w: number; h: number }
 export interface SnapView { img: string; purpose: 'ocr' | 'region' | 'window' | 'scroll' | 'color' | 'display'; windows: WinRect[]; /** pointer in screenshot px */ cursor: [number, number] | null;
   /** each display in the shot (screenshot px): the overlay spans them all */ displays: [number, number, number, number][];
@@ -148,7 +192,7 @@ export interface TrayIcon { id: string; tip: string; icon: string | null; exe: s
 export interface KeyboardLayout { id: number; code: string; name: string; locale: string; active: boolean }
 export interface DiskInfo { mount: string; label: string; total: number; available: number; removable: boolean; fs: string }
 export interface ScreenToday { total: number; apps: { exe: string; name: string; seconds: number }[] }
-export type Sound = { kind: 'chime'; volume?: number } | { kind: 'azan'; src: string; short?: boolean; pauseMusic?: boolean; volume?: number } | { kind: 'adhan'; short: boolean; pauseMusic?: boolean; volume?: number } | { kind: 'connect' | 'disconnect' | 'plug' | 'unplug'; volume: number };
+export type Sound = { kind: 'chime'; volume?: number } | { kind: 'azan'; src: string; short?: boolean; pauseMusic?: boolean; volume?: number } | { kind: 'adhan'; short: boolean; voice?: string; pauseMusic?: boolean; volume?: number } | { kind: 'connect' | 'disconnect' | 'plug' | 'unplug'; volume: number };
 
 export interface AppWindow { id: number; title: string; exe: string; active: boolean; minimized: boolean; aumid?: string | null }
 export interface AudioDevice { id: string; name: string; isDefault: boolean }
@@ -164,7 +208,8 @@ export interface RadioInfo { kind: 'wifi' | 'bluetooth' | 'other'; name: string;
 export interface Hotspot { on: boolean; ssid: string; clients: number; maxClients: number }
 /** Wireless displays nearby (Miracast) and whether this PC is casting to one now. */
 /** Today's water: total and goal in ml, each drink, the last 7 days (oldest first). */
-export interface WaterToday { total: number; goal: number; cup: number; entries: { at: number; ml: number }[]; week: { day0: number; ml: number }[]; hot: boolean }
+export interface WaterToday { total: number; goal: number; cup: number; entries: { at: number; ml: number }[]; week: { day0: number; ml: number }[]; hot: boolean;
+  /** When the next reminder shows (epoch ms); null when reminders are off or the goal is met. */ nextReminder: number | null }
 export interface CastState { casting: boolean; displays: { id: string; name: string }[] }
 export type DisplayMode = 'internal' | 'clone' | 'extend' | 'external';
 
@@ -313,6 +358,13 @@ export const ipc = {
   perfState: () => invoke<PerfState>('perf_state'),
   /** The Performance page is open: sample every second (a lease; call every 2 s). */
   perfWatch: () => invoke<void>('perf_watch'),
+  storageScan: () => invoke<StorageReport>('storage_scan'),
+  storageClean: (id: string) => invoke<StorageCleaned>('storage_clean', { id }),
+  /** Trim idle apps' memory (never closes anything); `lowerHogs` also lowers background CPU hogs. */
+  boostRun: (lowerHogs: boolean) => invoke<BoostReport>('boost_run', { lowerHogs }),
+  boostIdleApps: () => invoke<IdleApp[]>('boost_idle_apps'),
+  /** A normal close request (the app may ask to save); returns which closed and which stayed. */
+  boostClose: (exes: string[]) => invoke<{ closed: string[]; stillOpen: string[] }>('boost_close', { exes }),
   /** Is the auto-hidden bar slid away right now? */
   barAway: () => invoke<boolean>('bar_away'),
   disksList: () => invoke<DiskInfo[]>('disks_list'),
@@ -336,7 +388,7 @@ export const ipc = {
   jumplist: (exe: string) => invoke<{ name: string; path: string }[]>('jumplist', { exe }),
   // audio
   audioState: () => invoke<AudioState>('audio_state'),
-  audioSetVolume: (volume: number) => invoke<void>('audio_set_volume', { volume }),
+  audioSetVolume: (v: number) => volume.push(v).then(() => { volumeAt = performance.now(); }),
   audioSetMute: (muted: boolean) => invoke<void>('audio_set_mute', { muted }),
   audioSetDefault: (id: string) => invoke<void>('audio_set_default', { id }),
   audioSessions: () => invoke<AudioSession[]>('audio_sessions'),
@@ -383,7 +435,14 @@ export const ipc = {
   micSetVolume: (volume: number) => invoke<void>('mic_set_volume', { volume }),
   micSetDefault: (id: string) => invoke<void>('mic_set_default', { id }),
   privacyInUse: () => invoke<InUse>('privacy_in_use'),
+  holidaysGet: (force = false) => invoke<{ items: Holiday[]; fetchedAt: number; cached: boolean }>('holidays_get', { force }),
+  devStatus: (root: string) => invoke<DevStatus>('devstack_status', { root }),
+  devToggle: (root: string, id: string, start: boolean) => invoke<void>('devstack_toggle', { root, id, start }),
+  devOpenLaragon: (root: string) => invoke<void>('devstack_open_laragon', { root }),
   fxRates: (base: string, force = false) => invoke<Rates>('fx_rates', { base, force }),
+  aiLimits: (force = false) => invoke<AiLimits>('ai_limits', { force }),
+  /** Claude Code tokens per local day, oldest first. */
+  aiDaily: (days: number) => invoke<AiDay[]>('ai_daily', { days }),
   ocrSnapStart: (purpose: SnapView['purpose'] = 'ocr') => invoke<void>('ocr_snap_start', { purpose }),
   ocrShot: () => invoke<SnapView | null>('ocr_shot'),
   ocrSnapFinish: (x: number, y: number, w: number, h: number, window: number | null = null) => invoke<string>('ocr_snap_finish', { x, y, w, h, window }),
@@ -457,7 +516,7 @@ export const events = {
   popupHide: (cb: () => void) => listen('popup:hide', () => cb()),
   popupLeave: (cb: () => void) => listen('popup:leave', () => cb()),
   appsChanged: (cb: (w: AppWindow[]) => void) => listen<AppWindow[]>('apps:changed', (e) => cb(e.payload)),
-  audioChanged: (cb: (s: AudioState) => void) => listen<AudioState>('audio:changed', (e) => cb(e.payload)),
+  audioChanged: (cb: (s: AudioState) => void) => listen<AudioState>('audio:changed', (e) => { if (!volumeSettling()) cb(e.payload); }),
   mediaChanged: (cb: (m: MediaInfo | null) => void) => listen<MediaInfo | null>('media:changed', (e) => cb(e.payload)),
   alertsChanged: (cb: () => void) => listen('alerts:changed', () => cb()),
   downloadsNew: (cb: (i: DlItem) => void) => listen<DlItem>('downloads:new', (e) => cb(e.payload)),
@@ -467,6 +526,8 @@ export const events = {
   settingsSection: (cb: (s: string) => void) => listen<string>('settings:section', (e) => cb(e.payload)),
   sysmonSample: (cb: (s: Sample) => void) => listen<Sample>('sysmon:sample', (e) => cb(e.payload)),
   perfSample: (cb: (s: PerfSample) => void) => listen<PerfSample>('perf:sample', (e) => cb(e.payload)),
+  /** Boost ran: drop in-memory caches (icons refill when shown). */
+  boostFree: (cb: () => void) => listen('boost:free', () => cb()),
   /** The auto-hidden bar slid away (true) or back in (false). */
   magnifyFrame: (cb: (icons: MagIcon[]) => void) => listen<MagIcon[]>('magnify:frame', (e) => cb(e.payload)),
   magnifyReset: (cb: () => void) => own<null>('magnify:reset', () => cb()),

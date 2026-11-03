@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { playAdzan, stopSound } from './sound';
+import { ADHANS, adhanOf, playAdzan, stopSound } from './sound';
 
 // Web Audio, faked: the adzan is decoded and played through an AudioBufferSourceNode.
 class FakeSource { buffer: unknown = null; onended: (() => void) | null = null; connect = () => fakeGain; start = vi.fn(); stop = () => this.onended?.(); }
@@ -72,5 +72,36 @@ describe('playAdzan', () => {
     await flush();
     expect(FakeContext.last?.start).toHaveBeenCalledWith(0, 0, 43.3);
     stopSound();
+  });
+
+  it('a replaced adzan neither ends nor resumes the music: the new one does, once', async () => {
+    const media = { pause: vi.fn(async () => ['Spotify.exe']), resume: vi.fn(async () => {}) };
+    const firstEnd = vi.fn(), secondEnd = vi.fn();
+    playAdzan('a.mp3', false, true, media, 1, firstEnd);
+    await flush();
+    media.pause.mockResolvedValueOnce([]); // the music is already paused by the first
+    playAdzan('b.mp3', false, true, media, 1, secondEnd);
+    await flush();
+    expect(firstEnd).not.toHaveBeenCalled();
+    expect(media.resume).not.toHaveBeenCalled();
+    ended();
+    await flush();
+    expect(secondEnd).toHaveBeenCalledOnce();
+    expect(media.resume).toHaveBeenCalledWith(['Spotify.exe']);
+  });
+
+  it('a bundled recording stops at its own takbir pause', async () => {
+    playAdzan('a.mp3', ADHANS.madina.short, false, { pause: async () => [], resume: async () => {} });
+    await flush();
+    expect(FakeContext.last?.start).toHaveBeenCalledWith(0, 0, 45);
+    stopSound();
+  });
+});
+
+describe('adhanOf', () => {
+  it('defaults to the Madina recording when unset or unknown', () => {
+    expect(adhanOf()).toBe(ADHANS.madina);
+    expect(adhanOf('toString')).toBe(ADHANS.madina);
+    expect(adhanOf('classic')).toBe(ADHANS.classic);
   });
 });

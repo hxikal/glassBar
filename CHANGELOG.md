@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.11 — 2026-11-03
+
+### New
+- **A richer calendar in the Clock panel.** Days carry a dot for to-dos due (accent) and countdowns (purple), the Umm al-Qura day in small text with a crescent on the Hijri 1st, weekend shading (Friday–Saturday for Kedah, Kelantan and Terengganu), the neighbouring months' days dimmed, and optional week numbers. Today's sunrise and sunset sit above the grid. Click a day to see what falls on it, tick to-dos there, or add a to-do for that day. Switches for Hijri dates and week numbers in the clock's Calendar & holidays options.
+- **Malaysian public holidays on the Clock.** The next holiday shows beside the clock when it is within 1 week, 2 weeks or 1 month ("Diwali 5d"), the panel lists the upcoming ones with a state picker (your state comes from your location or is picked), and holiday days are marked on the calendar. Data: Google's public Malaysia holiday calendar, cached for a week.
+- **Dev Stack widget** for Laragon: Apache, Nginx, MySQL, Redis and Memcached with running dots, Start/Stop and Start all / Stop all, plus your www sites (open http://site.test or the folder). MySQL is stopped with mysqladmin shutdown, never killed.
+- **AI Usage widget:** how much of your Claude plan's 5-hour and weekly windows is left (or used), per model, and Claude Code tokens per day. It uses the login Claude Code saved on this PC and reads Claude Code's local transcripts; no key to enter. Rows can be hidden from the dock.
+- **Settings › Storage** shows what GlassBar keeps on your PC, widget by widget, with a total. Each row offers only the cleanups that fit it, says what it removes and how much, and asks first. The database is backed up before any cleanup, and the newest backup is always kept.
+- **Boost** (Settings › Performance and the System Monitor panel) frees memory held by idle background apps and can lower background apps that hog the CPU. It never closes or kills anything on its own; "Close apps I'm not using" is a separate list you tick.
+- **Choose the azan voice** in Waktu Solat: Madina with rain (the new default), Madina (Nabawi), Jeddah (Al-Zaili) or Classic. Short adzan stops at each voice's own takbir pause. Your own recording still replaces the voice.
+- **Water** shows the time to the next reminder, and the panel says when reminders are off, with a Turn on button.
+- **App Folders** show 2–4 folders on the dock (3 by default) with a "+n" chip that opens All folders. Right-click a folder there to open or delete it.
+- **Waktu Solat:** Tasbih pin and hide buttons in its panel, and switches in the panel options.
+
+### Fixed
+- **Volume follows the mouse wheel smoothly** on the sound and music pills and panels; it no longer jumps back mid-scroll.
+- **An adzan replaced by another** (Test pressed twice) no longer ends early: Stop stays, and paused music resumes only at the real end.
+
+### Removed
+- **The Companion widget.** It is dropped from saved profiles.
+
 ## 0.6.10 — 2026-11-02
 
 ### Fixed

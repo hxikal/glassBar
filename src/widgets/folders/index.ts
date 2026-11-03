@@ -10,6 +10,8 @@ export interface FoldersSettings {
   showNames: boolean;
   /** Open a folder by hovering it, not only by clicking. */
   openOnHover: boolean;
+  /** How many folders show on the dock (2-4); the rest are behind a "+n" chip. */
+  maxShown: number;
 }
 
 export default defineWidget<FoldersSettings>({
@@ -20,6 +22,6 @@ export default defineWidget<FoldersSettings>({
   icon: FolderOpen,
   sizes: ['small'],
   defaultSize: 'small',
-  defaults: { folders: [{ id: 'f1', name: '', apps: [] }], showNames: true, openOnHover: false },
+  defaults: { folders: [{ id: 'f1', name: '', apps: [] }], showNames: true, openOnHover: false, maxShown: 3 },
   Pill,
 });

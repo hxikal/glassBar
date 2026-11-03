@@ -238,7 +238,11 @@ pub enum PerfMode { Low, #[default] Normal, High }
 /// The chosen mode; with `auto` on, GlassBar picks Normal or Low itself.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(rename_all = "camelCase", default)]
-pub struct Performance { pub mode: PerfMode, pub auto: bool }
+pub struct Performance {
+    pub mode: PerfMode, pub auto: bool,
+    /// Apps Boost never trims or lowers, by exe name ("Spotify.exe" or "spotify").
+    pub never_touch: Vec<String>,
+}
 
 /// show: banners on (else a Windows toast) · seconds: 3/5/8/10 · position: "auto" (next
 /// to the dock) or "corner" · on_click: "highlight" or "open" (also open the panel) ·
@@ -288,7 +292,7 @@ impl Default for Config {
 /// v3 folded the Disk widget into the System Monitor; v4 the Tray widget into Quick Settings.
 /// v10: opacity became "how solid the dock is" on top of the Windows material (it was the
 /// acrylic tint, which Windows 11 ignores): 0 keeps the old native look.
-pub const CURRENT_VERSION: u32 = 11;
+pub const CURRENT_VERSION: u32 = 12;
 
 /// Migration helper: widget `from` became part of widget `into`. Its settings (mapped by
 /// `map`) are merged into the existing `into` widget, or it turns into one in place.
@@ -444,6 +448,10 @@ impl Config {
             // The Ask Claude and AI Usage widgets were removed.
             for p in self.profiles.values_mut() { p.widgets.retain(|w| w.id != "ai" && w.id != "aiusage"); }
         }
+        if self.version < 12 {
+            // The Companion widget was removed.
+            for p in self.profiles.values_mut() { p.widgets.retain(|w| w.id != "companion"); }
+        }
         self.version = CURRENT_VERSION;
         if self.profiles.is_empty() {
             self.profiles.insert("Default".into(), Profile::default());
@@ -523,15 +531,15 @@ mod tests {
     #[test]
     fn performance_defaults_to_normal_manual() {
         let c: Config = serde_json::from_str(r#"{"version":11}"#).unwrap();
-        assert_eq!(c.performance, Performance { mode: PerfMode::Normal, auto: false });
+        assert_eq!(c.performance, Performance { mode: PerfMode::Normal, auto: false, never_touch: vec![] });
     }
 
     #[test]
     fn performance_round_trips_lowercase() {
         let mut c = Config::default();
-        c.performance = Performance { mode: PerfMode::Low, auto: true };
+        c.performance = Performance { mode: PerfMode::Low, auto: true, never_touch: vec![] };
         let s = serde_json::to_string(&c).unwrap();
-        assert!(s.contains(r#""performance":{"mode":"low","auto":true}"#));
+        assert!(s.contains(r#""performance":{"mode":"low","auto":true,"neverTouch":[]}"#));
         assert_eq!(serde_json::from_str::<Config>(&s).unwrap().performance, c.performance);
     }
 
@@ -779,6 +787,16 @@ mod tests {
         let mut c = Config::default();
         c.version = 10;
         c.profiles.get_mut("Default").unwrap().widgets = vec![w("music"), w("ai"), w("aiusage"), w("clock")];
+        let ids: Vec<String> = c.normalized().profiles["Default"].widgets.iter().map(|w| w.id.clone()).collect();
+        assert_eq!(ids, vec!["music", "clock"]);
+    }
+
+    #[test]
+    fn v12_drops_the_removed_companion_widget() {
+        let w = |id: &str| WidgetInst { id: id.into(), instance: format!("{id}-1"), size: "small".into(), settings: serde_json::Value::Null, enabled: true };
+        let mut c = Config::default();
+        c.version = 11;
+        c.profiles.get_mut("Default").unwrap().widgets = vec![w("music"), w("companion"), w("clock")];
         let ids: Vec<String> = c.normalized().profiles["Default"].widgets.iter().map(|w| w.id.clone()).collect();
         assert_eq!(ids, vec!["music", "clock"]);
     }

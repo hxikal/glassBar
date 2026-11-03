@@ -14,6 +14,7 @@ mod config;
 mod db;
 mod net;
 mod perf;
+mod storage;
 mod platform;
 mod widgets;
 
@@ -236,10 +237,11 @@ fn main() {
             widgets::trash::trash_items, widgets::trash::trash_restore, widgets::trash::trash_recycle, widgets::trash::trash_empty_confirm,
             widgets::focus::sw_get, widgets::focus::sw_toggle, widgets::focus::sw_lap, widgets::focus::sw_reset,
             widgets::location::location_status, widgets::location::location_clear, widgets::location::location_open_map, widgets::location::location_search, widgets::weather::weather_get,
+            widgets::holidays::holidays_get, widgets::devstack::devstack_status, widgets::devstack::devstack_toggle, widgets::devstack::devstack_open_laragon,
             widgets::solat::solat_days, widgets::solat::solat_zones, widgets::solat::solat_test_sound,
             widgets::tasbih::tasbih_get, widgets::tasbih::tasbih_add, widgets::tasbih::tasbih_reset,
             widgets::ipu::ipu_get,
-            perf::perf_history, perf::perf_state, perf::perf_watch, bar::bar_away,
+            perf::perf_history, perf::perf_state, perf::perf_watch, storage::storage_scan, storage::storage_clean, perf::boost::boost_run, perf::boost::boost_idle_apps, perf::boost::boost_close, bar::bar_away,
             widgets::sysmon::sysmon_history, widgets::sysmon::battery_get, widgets::sysmon::disks_list,
             widgets::sysmon::power_get, widgets::sysmon::power_set_mode, widgets::sysmon::power_use_balanced,
             widgets::screentime::screentime_today, widgets::screentime::screentime_week,
@@ -262,6 +264,8 @@ fn main() {
             widgets::quick::night_light_get, widgets::quick::night_light_set, widgets::quick::nearby_get, widgets::quick::nearby_set, widgets::quick::cast_get,
             widgets::water::water_today, widgets::water::water_add, widgets::water::water_remove, widgets::water::water_snooze,
             widgets::currency::fx_rates,
+            widgets::ai_usage::ai_limits,
+            widgets::ai_usage::ai_daily,
             widgets::apps::app_pin_target, widgets::apps::app_browse, widgets::apps::apps_installed, widgets::apps::paths_exist,
             widgets::ocr::ocr_hotkey_status, widgets::ocr::color_hotkey_status, widgets::ocr::color_pick_finish, widgets::ocr::ocr_snap_start, widgets::ocr::ocr_shot, widgets::ocr::ocr_snap_cancel, widgets::ocr::ocr_snap_show,
             widgets::ocr::ocr_snap_finish, widgets::screenshots::shots_list, widgets::clipboard::clip_list, widgets::clipboard::clip_copy, widgets::clipboard::clip_delete, widgets::clipboard::clip_pin, widgets::screenshots::shots_copy,

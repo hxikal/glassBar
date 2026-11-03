@@ -4,6 +4,7 @@
   import PanelHeader from '../../lib/PanelHeader.svelte';
   import { updateWidgetSettings } from '../../lib/config.svelte';
   import { ipc } from '../../lib/ipc';
+  import { ADHANS } from '../../lib/sound';
   import OptionsPopover from '../../lib/OptionsPopover.svelte';
   import type { PopupProps } from '../types';
   import type { SolatSettings } from './index';
@@ -38,7 +39,9 @@
       { value: 'short', label: 'Short adzan', hint: 'The opening takbir, about 40 seconds' },
       { value: 'full', label: 'Full adzan' },
       { value: 'chime', label: 'Normal alert sound', hint: 'The usual short alert sound' }] },
-    ...(settings.azanSound !== 'chime' ? [{ type: 'toggle' as const, key: 'pauseMusic', label: 'Pause music during adzan' }] : []),
+    ...(settings.azanSound !== 'chime' ? [
+      ...(settings.azanFile ? [] : [{ type: 'choice' as const, key: 'azanVoice', label: 'Voice', menu: true, choices: Object.entries(ADHANS).map(([value, a]) => ({ value, label: a.label })) }]),
+      { type: 'toggle' as const, key: 'pauseMusic', label: 'Pause music during adzan' }] : []),
   ]} />
   {#if settings.azanSound !== 'chime'}
     <label class="vol"><span class="dim">Adzan volume</span>
@@ -48,6 +51,10 @@
     </label>
   {/if}
   <button class="btn test" disabled={!settings.alerts} onclick={() => ipc.solatTestSound(settings)}><Play size={12} /> Test sound</button>
+  <OptionsPopover title="Tasbih" values={{ ...settings, showTasbih: settings.showTasbih !== false, tasbihOnDock: settings.tasbihOnDock !== false }} save={(p) => updateWidgetSettings(instance, p)} options={[
+    { type: 'toggle', key: 'showTasbih', label: 'Tasbih in this panel' },
+    { type: 'toggle', key: 'tasbihOnDock', label: 'Tasbih beside the prayer pill' },
+  ]} />
   <p class="dim small hint">Press ✓ on the prayer pill to stop the adzan. Your own recording can be set in Settings › Widgets.</p>
 {/if}
 {#if adhan.playing}

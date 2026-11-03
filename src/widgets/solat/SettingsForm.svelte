@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ipc } from '../../lib/ipc';
+  import { ADHANS } from '../../lib/sound';
   import LocationTag from '../../lib/LocationTag.svelte';
   import type { SettingsProps } from '../types';
   import type { SolatSettings } from './index';
@@ -31,12 +32,18 @@
   <button class="btn" disabled={!settings.alerts} onclick={() => ipc.solatTestSound(settings)}>Test</button>
 </label>
 {#if settings.azanSound !== 'chime'}
+<label>Adzan voice
+  <select value={settings.azanVoice ?? 'madina'} disabled={!settings.alerts || !!settings.azanFile}
+          onchange={(e) => save({ azanVoice: e.currentTarget.value as SolatSettings['azanVoice'] })}>
+    {#each Object.entries(ADHANS) as [k, a] (k)}<option value={k}>{a.label}</option>{/each}
+  </select>
+</label>
 <label>Adzan volume {settings.azanVolume ?? 100}%
   <input type="range" class="slider" min="5" max="100" step="5" value={settings.azanVolume ?? 100} disabled={!settings.alerts}
          style:--fill="{settings.azanVolume ?? 100}%" onchange={(e) => save({ azanVolume: +e.currentTarget.value })} />
 </label>
 <label><input type="checkbox" checked={settings.pauseMusic !== false} disabled={!settings.alerts} onchange={(e) => save({ pauseMusic: e.currentTarget.checked })} /> Pause music during adzan (resumes after)</label>
-<label>Own adzan recording (MP3/WAV, optional)
+<label>Own adzan recording (MP3/WAV, optional, replaces the voice)
   <input style="flex:1" placeholder="C:\Users\me\Music\azan.mp3" value={settings.azanFile}
          onchange={(e) => save({ azanFile: e.currentTarget.value.trim().replace(/^"|"$/g, '') })} />
 </label>

@@ -1,7 +1,8 @@
 <script lang="ts">
   // Tasbih in the prayer panel: a big tap ring (Space / Enter count too), the dhikr, the
-  // target, undo, and reset by press-and-hold so a stray click never loses a count.
-  import { RotateCcw, Undo2 } from '@lucide/svelte';
+  // target, undo, and reset by press-and-hold so a stray click never loses a count. The header
+  // pins it beside the prayer pill on the dock, or hides it (the panel's options bring it back).
+  import { EyeOff, Pin, RotateCcw, Undo2 } from '@lucide/svelte';
   import { updateWidgetSettings } from '../../lib/config.svelte';
   import { ipc, type TasbihState } from '../../lib/ipc';
   import { live } from '../../lib/live.svelte';
@@ -41,6 +42,12 @@
   <div class="head">
     <h4>Tasbih</h4>
     <span class="dim today">Today {t.v.today.toLocaleString()}</span>
+    <button class="mini" class:on={settings.tasbihOnDock !== false} aria-pressed={settings.tasbihOnDock !== false}
+            onclick={() => updateWidgetSettings(instance, { tasbihOnDock: settings.tasbihOnDock === false })}
+            title={settings.tasbihOnDock !== false ? 'On the dock beside the prayer pill: click to remove' : 'Show on the dock beside the prayer pill'}
+            aria-label="Tasbih on the dock"><Pin size={13} /></button>
+    <button class="mini" onclick={() => updateWidgetSettings(instance, { showTasbih: false })}
+            title="Hide Tasbih from this panel (the options button above brings it back)" aria-label="Hide Tasbih from this panel"><EyeOff size={13} /></button>
   </div>
 
   <button class="tap" class:done class:pop onclick={add} onanimationend={() => (pop = false)} aria-label="Count. {t.v.count} of {target}">
@@ -86,7 +93,12 @@
 
 <style>
   .tas { margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; }
-  .head { display: flex; align-items: baseline; justify-content: space-between; width: 100%; }
+  .head { display: flex; align-items: center; gap: 2px; width: 100%; }
+  .head .today { margin: 0 4px 0 auto; }
+  .mini { display: grid; place-items: center; width: 24px; height: 24px; border-radius: calc(7px * var(--rs)); color: var(--fg-dim); transition: background 0.2s var(--ease), color 0.2s var(--ease); }
+  .mini:hover { background: var(--pill-hover); color: var(--fg); }
+  .mini.on { color: var(--accent); }
+  .mini:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   h4 { margin: 0 2px; font-size: 13px; font-weight: 600; }
   .today { font-size: 12px; font-variant-numeric: tabular-nums; }
   .tap { position: relative; display: grid; place-items: center; width: 120px; height: 120px; margin: 10px 0 4px; border-radius: 50%;

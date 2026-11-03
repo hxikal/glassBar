@@ -12,9 +12,7 @@
   import { fmtWater } from '../widgets/water/units';
   import { hiddenCounts, insertIndex, revealBy, snap } from '../lib/geometry';
   import { GALLERY, openPopup } from '../lib/popup';
-  import { chargerTone, chime, deviceTone, playAdzan, shutter, tick } from '../lib/sound';
-  // Bundled adzan: "Beautiful adhan" by Adam-synagda, Wikimedia Commons, CC0.
-  import adhanUrl from '../assets/adhan.ogg?url';
+  import { adhanOf, chargerTone, chime, deviceTone, playAdzan, shutter, tick } from '../lib/sound';
   import { showMenu } from '../lib/menu';
   import { settingsOf, widgets } from '../widgets/registry';
   import { visibleOnDock } from '../widgets/layout';
@@ -110,8 +108,7 @@
   // The prayer alert says it for a few seconds (holdMs), with Stop adhan while the adzan
   // plays; the adzan goes on after it, and the prayer widget and its panel can stop it too.
 
-  // The charger's switch is the older `chargerFlash`; the Companion also rides the charger
-  // event, so the switch is checked here rather than in Rust.
+  // The charger's switch is the older `chargerFlash`, checked here rather than in Rust.
   const enabled = (k: AlertKind) => (k === 'charger' ? store.config?.chargerFlash !== false : alertCfg[k] !== false);
   const current = () => (alert && !leaving ? alert.kind : null);
   function clearAlertTimers() { alertTimers.forEach(clearTimeout); alertTimers = []; }
@@ -225,7 +222,7 @@
           }
         }, 450); // after the scroll settles
       }),
-      events.soundPlay((s) => (s.kind === 'azan' || s.kind === 'adhan' ? (setAdhanPlaying(true), playAdzan(s.kind === 'azan' ? s.src : adhanUrl, !!s.short, !!s.pauseMusic, { pause: ipc.mediaPausePlaying, resume: ipc.mediaResume }, s.volume ?? 1, () => setAdhanPlaying(false))) : s.kind === 'connect' || s.kind === 'disconnect' ? deviceTone(s.kind === 'connect', s.volume) : s.kind === 'plug' || s.kind === 'unplug' ? chargerTone(s.kind === 'plug', s.volume) : chime(s.volume))),
+      events.soundPlay((s) => (s.kind === 'azan' || s.kind === 'adhan' ? (setAdhanPlaying(true), playAdzan(s.kind === 'azan' ? s.src : adhanOf(s.voice).url, !s.short ? false : s.kind === 'azan' || adhanOf(s.voice).short, !!s.pauseMusic, { pause: ipc.mediaPausePlaying, resume: ipc.mediaResume }, s.volume ?? 1, () => setAdhanPlaying(false))) : s.kind === 'connect' || s.kind === 'disconnect' ? deviceTone(s.kind === 'connect', s.volume) : s.kind === 'plug' || s.kind === 'unplug' ? chargerTone(s.kind === 'plug', s.volume) : chime(s.volume))),
       events.chargerFlip((f) => showAlert({ kind: 'charger', ...f })),
       events.popupShow((i) => { panelOpen = i !== '__feedback'; }),
       events.popupHide(() => { panelOpen = false; }),

@@ -193,6 +193,8 @@ pub trait Shell: Send + Sync {
     /// Recently used files that open with `exe`, newest first.
     fn recent_for(&self, exe: &str, limit: usize) -> Vec<RecentItem>;
     fn list_windows(&self) -> Vec<AppWindow>;
+    /// Boost: drop in-memory caches (window and exe icons); they refill on demand.
+    fn free_caches(&self) {}
     /// Calls `on_change` (debounced) whenever top-level windows change.
     fn watch_windows(&self, on_change: Box<dyn Fn() + Send>);
     /// Hide (or stop hiding) Windows' own volume / brightness pop-up (windows/osd.rs).

@@ -24,6 +24,8 @@ pub fn last_foreground() -> isize { LAST_FG.load(Ordering::Relaxed) }
 static TX: OnceLock<Sender<()>> = OnceLock::new();
 static ICONS: Mutex<Option<HashMap<String, Option<String>>>> = Mutex::new(None);
 
+pub fn free_icons() { *ICONS.lock().unwrap() = None; }
+
 fn h(id: isize) -> HWND { HWND(id as *mut _) }
 
 pub(crate) fn pid_of(w: HWND) -> u32 {

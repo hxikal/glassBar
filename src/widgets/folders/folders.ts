@@ -9,6 +9,14 @@ export interface Folder { id: string; name: string; apps: Pin[] }
 export const FOLDER = '__folder:';
 export const FOLDER_HOVER = '__folderh:';
 export const folderKey = (hover: boolean, instance: string, id: string) => `${hover ? FOLDER_HOVER : FOLDER}${instance}|${id}`;
+/** The folder id of the "All folders" panel (opened from +n or the widget around the folders). */
+export const ALL = '*';
+/** The folders shown on the dock: the first `max` (2-4), and how many more there are. */
+export const shownCount = (max: number | undefined) => Math.min(4, Math.max(2, Math.round(max ?? 3)));
+export function visibleFolders(list: Folder[], max: number | undefined): { shown: Folder[]; more: number } {
+  const n = shownCount(max);
+  return list.length <= n ? { shown: list, more: 0 } : { shown: list.slice(0, n), more: list.length - n };
+}
 export function parseFolderKey(key: string | null | undefined): { instance: string; id: string; hover: boolean } | null {
   if (!key) return null;
   const hover = key.startsWith(FOLDER_HOVER);

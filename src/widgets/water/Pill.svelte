@@ -2,7 +2,7 @@
   // A drop that fills with today's water, and the amount (or %) beside it. Click for the panel.
   import type { PillProps } from '../types';
   import type { WaterSettings } from './settings';
-  import { fmtWater, progressOf } from './units';
+  import { fmtWater, progressOf, untilText } from './units';
   import { liveWater } from './live.svelte';
   import Drop from './Drop.svelte';
   import Tank from '../../lib/Tank.svelte';
@@ -11,7 +11,10 @@
   const w = liveWater(() => settings);
   const p = $derived(w.v ? progressOf(w.v.total, w.v.goal) : 0);
   const text = $derived(!w.v ? '' : settings.show === 'percent' ? `${Math.round(p * 100)}%` : fmtWater(w.v.total, settings.unit));
-  const title = $derived(w.v ? `Water today: ${fmtWater(w.v.total, settings.unit)} of ${fmtWater(w.v.goal, settings.unit)}` : 'Water');
+  // Time to the next reminder, so you can see the reminders are on and working.
+  const next = $derived(w.v?.nextReminder != null ? untilText(w.v.nextReminder - w.now) : null);
+  const title = $derived(w.v ? `Water today: ${fmtWater(w.v.total, settings.unit)} of ${fmtWater(w.v.goal, settings.unit)}`
+    + (next ? ` · next reminder ${next === 'now' ? 'now' : `in ${next}`}` : settings.remind === false ? ' · reminders off' : '') : 'Water');
 
   // A drink was logged (here, in the panel, or from the dock alert): "+250 ml" floats up.
   let added = $state<{ n: number; ml: number } | null>(null);
@@ -42,6 +45,7 @@
     <Tank fill={p} />
     <Drop fill={p} size={18} />
     {#if size !== 'small' && text}<span class="v">{text}</span>{/if}
+    {#if size !== 'small' && next}<span class="next">{next}</span>{/if}
     {#if added}
       {#key added.n}<span class="plus" aria-hidden="true">+{fmtWater(added.ml, settings.unit)}</span>{/key}
     {/if}
@@ -52,6 +56,7 @@
   .water { gap: 6px; padding: 0 10px 0 8px; }
   .v { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .done .v { color: #40c8e0; }
+  .next { font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--fg-dim); white-space: nowrap; }
   .water, .wside { position: relative; overflow: visible; }
   /* Content above the water. */
   .water > :global(:not(.tank)), .wside > :global(:not(.tank)) { position: relative; z-index: 1; }

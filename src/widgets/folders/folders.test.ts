@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addApps, folderKey, isApp, moveApp, parseFolderKey, pinId, removeApp, type Folder } from './folders';
+import { addApps, folderKey, isApp, visibleFolders, moveApp, parseFolderKey, pinId, removeApp, type Folder } from './folders';
 
 const f = (...paths: string[]): Folder => ({ id: 'a', name: '', apps: paths.map((path) => ({ path })) });
 const names = (x: Folder) => x.apps.map((p) => p.path);
@@ -29,5 +29,13 @@ describe('folders', () => {
   it('takes programs and shortcuts only', () => {
     expect(isApp('C:/x/Tool.LNK')).toBe(true);
     expect(isApp('C:/x/notes.txt')).toBe(false);
+  });
+  it('shows 2-4 folders on the dock and counts the rest', () => {
+    const list = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, name: '', apps: [] }));
+    expect(visibleFolders(list, 3)).toEqual({ shown: list.slice(0, 3), more: 2 });
+    expect(visibleFolders(list, undefined).more).toBe(2);
+    expect(visibleFolders(list, 9).shown.length).toBe(4);
+    expect(visibleFolders(list, 1).shown.length).toBe(2);
+    expect(visibleFolders(list.slice(0, 3), 3)).toEqual({ shown: list.slice(0, 3), more: 0 });
   });
 });

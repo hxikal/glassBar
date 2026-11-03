@@ -36,7 +36,7 @@ describe('every widget folder registers', () => {
 
   it('includes the widgets that should be there', async () => {
     const ids = (await read()).map((w) => field(w.src, 'id'));
-    for (const id of ['clock', 'music', 'equalizer', 'shelf', 'companion']) {
+    for (const id of ['clock', 'music', 'equalizer', 'shelf', 'water']) {
       expect(ids, `${id} is missing from the gallery`).toContain(id);
     }
   });

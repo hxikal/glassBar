@@ -7,6 +7,9 @@
   import { ticker } from './time.svelte';
   import { zonesOf } from './zones';
   import WeatherPart from './WeatherPart.svelte';
+  import { PartyPopper } from '@lucide/svelte';
+  import { holidaysFor } from './holidays.svelte';
+  import { daysUntil, whenLabel } from './holidays';
 
   let { instance, size, settings, vertical }: PillProps<ClockSettings> = $props();
   // Ticks every second only while seconds are shown; otherwise on each minute boundary.
@@ -17,6 +20,13 @@
   const day = $derived(date(clock.now, settings));
   // Left/right dock: time without seconds, AM/PM under it, then a short weekday + day.
   const sideTime = $derived(time(clock.now, settings, false));
+  // Next public holiday, when it is close enough to show beside the clock.
+  const hol = holidaysFor(() => settings, () => clock.now);
+  const next = $derived.by(() => {
+    const h = settings.holidays ? hol.list[0] : undefined;
+    const days = h ? daysUntil(h.date, hol.today) : Infinity;
+    return h && days <= Number(settings.holidayDays) ? { ...h, days } : null;
+  });
   const sideDay = $derived(new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric' }).format(clock.now));
 
   // "Popup" appearance: hovering the clock shows the big clock + world clocks, without a click.
@@ -24,7 +34,7 @@
   function enter(e: PointerEvent) {
     if (settings.appearance !== 'popup') return;
     const el = e.currentTarget as HTMLElement;
-    hoverTimer = setTimeout(() => ipc.popupOpen(`__hover:${instance}`, el.getBoundingClientRect(), 340, 560, false), 400);
+    hoverTimer = setTimeout(() => ipc.popupOpen(`__hover:${instance}`, el.getBoundingClientRect(), 340, 640, false), 400);
   }
   function leave() {
     clearTimeout(hoverTimer);
@@ -42,7 +52,7 @@
   </div>
 </div>
 {:else}
-<div class="clockwrap" class:withwx={settings.showWeather}>
+<div class="clockwrap" class:withwx={settings.showWeather} class:withhol={!!next}>
 {#if settings.showWeather}<WeatherPart {instance} colorful={settings.weatherColorful} vertical={false} />{/if}
 <div class="pill clock {settings.appearance}" class:stacked={show === 'both' && settings.layout === 'stacked'}
      class:date-first={show === 'both' && settings.timeSide === 'right'}
@@ -57,6 +67,13 @@
     <span class="dim zone">{first.label} <Time now={clock.now} {settings} seconds={settings.worldSeconds} tz={first.tz} /></span>
   {/if}
 </div>
+{#if next}
+  <span class="hol" title="{next.name} · {new Date(next.date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} · {whenLabel(next.days)}">
+    <PartyPopper size={14} />
+    {#if size !== 'small'}<span class="hname">{next.name}</span>{/if}
+    <b>{next.days === 0 ? 'Today' : next.days === 1 ? 'Tmrw' : `${next.days}d`}</b>
+  </span>
+{/if}
 </div>
 {/if}
 
@@ -64,6 +81,17 @@
   /* Weather (optional) sits inside the same pill shape, on the left. */
   .clockwrap { display: flex; align-items: stretch; gap: 2px; height: 100%; }
   .withwx:not(.vertical) > .clock { border-top-left-radius: calc(4px * var(--rs)); border-bottom-left-radius: calc(4px * var(--rs)); }
+  /* Next holiday (optional) on the right, the same pill shape continued. */
+  .withhol > .clock { border-top-right-radius: calc(4px * var(--rs)); border-bottom-right-radius: calc(4px * var(--rs)); }
+  .hol {
+    display: flex; align-items: center; gap: 5px; height: 100%; padding: 0 10px; white-space: nowrap;
+    border-radius: 4px var(--radius-pill) var(--radius-pill) 4px;
+    background: color-mix(in srgb, #ff9f43 22%, var(--pill)); font-size: 12px;
+  }
+  .hol:hover { background: color-mix(in srgb, #ff9f43 32%, var(--pill)); }
+  .hol :global(svg) { color: #ff9f43; flex: none; }
+  .hname { max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+  .hol b { font-weight: 600; font-variant-numeric: tabular-nums; }
   .time { font-weight: 600; }
   .date { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .dot { margin: 0 -2px; }

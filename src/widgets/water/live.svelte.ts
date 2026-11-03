@@ -1,9 +1,12 @@
 import { events, ipc, type WaterToday } from '../../lib/ipc';
 
-/** Today's water, kept current: Rust sends `water:changed` after every add or remove; it is
- *  asked again at every midnight, and whenever `settings()` (the goal) changes. */
+/** Today's water, kept current: Rust sends `water:changed` after every add or remove (and each
+ *  reminder); it is asked again at every midnight, and whenever `settings()` (the goal) changes.
+ *  `now` ticks every 20 s for the reminder countdown. */
 export function liveWater(settings: () => unknown) {
   let v = $state<WaterToday | null>(null);
+  let now = $state(Date.now());
+  $effect(() => { const t = setInterval(() => (now = Date.now()), 20_000); return () => clearInterval(t); });
   const load = () => ipc.waterToday().then((t) => (v = t)).catch(() => {});
   $effect(() => {
     JSON.stringify(settings()); // the goal, weight or mode changed: the goal is Rust's to work out
@@ -24,5 +27,5 @@ export function liveWater(settings: () => unknown) {
     document.addEventListener('visibilitychange', vis);
     return () => { off.then((f) => f()); clearTimeout(t); document.removeEventListener('visibilitychange', vis); };
   });
-  return { get v() { return v; } };
+  return { get v() { return v; }, get now() { return now; } };
 }

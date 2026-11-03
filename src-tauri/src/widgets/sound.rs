@@ -78,8 +78,7 @@ pub fn charger_init() { *LAST_AC.lock().unwrap() = crate::platform::power().batt
 /// There is no matching gate for the dock flash. The flip event goes to the bar either way:
 /// the flash is chrome reporting what the user just did with a cable, Do Not Disturb has no
 /// business hiding it, and its own switch is checked in the page -- gating the *event* here
-/// would also have switched off every other thing that reacts to the charger, such as the
-/// Companion's face.
+/// would also have switched off everything else that reacts to the charger.
 pub fn charger_sound(charger_sound_on: bool, dnd: bool) -> bool {
     charger_sound_on && !dnd
 }
@@ -100,7 +99,7 @@ pub fn power_event(app: &tauri::AppHandle) {
         let c = st.config.lock().unwrap();
         (charger_sound(c.device_sounds.charger, c.dnd), c.device_sounds.volume)
     };
-    // Unconditional: the dock flash and the Companion both ride this. Only the bar gets it --
+    // Unconditional: the dock flash rides this (its own switch is checked in the page). Only the bar gets it --
     // a broadcast would wake the hidden panels for nothing.
     let _ = app.emit_to("bar", "charger:flip", serde_json::json!({
         "plugged": plugged,
