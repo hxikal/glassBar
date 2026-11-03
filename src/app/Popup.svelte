@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { profile } from '../lib/config.svelte';
   import { events, ipc } from '../lib/ipc';
+  import { glass } from '../lib/liquid';
   import { GALLERY } from '../lib/popup';
   import { settingsOf, widgets } from '../widgets/registry';
   import Gallery from './Gallery.svelte';
@@ -100,7 +101,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="surface popup" class:hover bind:this={surface} onpointerenter={stay} onpointerleave={leaveSoon}>
+<div class="surface popup" use:glass={true} class:hover bind:this={surface} onpointerenter={stay} onpointerleave={leaveSoon}>
   {#key instance}
   <div class="content" bind:this={content} style:--origin={ORIGIN[profile().bar.edge]}>
   {#if instance?.startsWith(WINDOWS)}

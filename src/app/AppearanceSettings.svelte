@@ -72,7 +72,7 @@
   {#if changed(t, k)}<button class="rev" title="Back to the preset's value" aria-label="Revert" onclick={() => revert(k)}><RotateCcw size={13} /></button>{/if}
 {/snippet}
 
-{#snippet slider(k: 'opacity' | 'panelOpacity' | 'cardOpacity' | 'shadow' | 'border' | 'iconScale' | 'spacing' | 'radius' | 'blur', label: string, min: number, max: number, step: number, fmt: (v: number) => string, disabled = false)}
+{#snippet slider(k: 'opacity' | 'panelOpacity' | 'cardOpacity' | 'shadow' | 'border' | 'iconScale' | 'spacing' | 'radius' | 'blur' | 'glassBlur' | 'glassPanelBlur', label: string, min: number, max: number, step: number, fmt: (v: number) => string, disabled = false)}
   <div class="field" class:off={disabled}><span>{label} <b class="val">{fmt(t[k])}</b></span>
     <span class="ctl">
       {@render revertBtn(k)}
@@ -155,6 +155,11 @@
   {:else if !t.nativeBlur}
     <p class="hint">Off: no blur, only the tint below (a page can't blur the desktop behind its window).</p>
   {/if}
+  {#if t.preset === 'liquid'}
+    {@render slider('glassBlur', 'Dock glass blur', 0, 20, 0.5, (v) => `${v}px`)}
+    {@render slider('glassPanelBlur', 'Panel glass blur', 0, 30, 0.5, (v) => `${v}px`)}
+    <p class="hint">Liquid Glass shows what is really behind the dock and its panels. Lower is clearer; 0 shows it sharp, only bent at the edges.</p>
+  {/if}
   {@render slider('opacity', 'Dock opacity', 0, 1, 0.01, pct)}
   {#if r.raised.dock && sup?.transparency !== false}<p class="hint">Shown at {pct(r.dock)}: {r.wall >= r.dock ? `your wallpaper behind the dock is ${r.dark ? 'bright' : 'dark'}, so ${r.dark ? 'white' : 'dark'} text` : r.blurred ? 'high-contrast text' : 'without blur, text'} needs a more solid background to stay readable.</p>{/if}
   {@render slider('panelOpacity', 'Panel opacity', 0, 1, 0.01, pct)}
@@ -209,7 +214,7 @@
     </div>
     <p class="hint">Calm: no springy bounce. Off: nothing moves. Windows' "Animation effects" setting off also turns them off.</p>
     {@render slider('blur', 'Overlay blur', 0, 60, 1, (v) => `${v}px`)}
-    <p class="hint">Blur behind overlays drawn inside GlassBar (e.g. the Snap hint over a screenshot). The blur behind the dock is the Windows material above.</p>
+    <p class="hint">Blur behind overlays drawn inside GlassBar (e.g. the Snap hint over a screenshot). The blur behind the dock is the Windows material above{#if t.preset === 'liquid'}, or with Liquid Glass the glass blur sliders{/if}.</p>
   </div>
 </details>
 

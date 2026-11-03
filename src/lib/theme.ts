@@ -33,6 +33,8 @@ export function applyTheme(t: Theme) {
   set('--on-accent', onAccent(t.accent));
   set('--accent-ink', accentInk(t.accent));
   set('--blur', `${t.blur}px`);
+  set('--glass-blur', String(t.glassBlur ?? 2));
+  set('--glass-panel-blur', String(t.glassPanelBlur ?? 8));
   // The dock window shows the dock opacity; panels, banners and previews the panel one.
   set('--tint-alpha', String(d.window === 'bar' ? r.dock : r.panel));
   set('--card-k', String(r.card));

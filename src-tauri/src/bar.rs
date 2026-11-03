@@ -367,6 +367,7 @@ pub fn reveal(app: &AppHandle, show: bool) {
             let _ = win.set_position(PhysicalPosition::new(x, y));
             std::thread::sleep(Duration::from_millis(15));
         }
+        if show { crate::glass::nudge(); }
     });
 }
 
@@ -556,6 +557,7 @@ pub fn popup_width(app: AppHandle, width: f64) {
     let Some(win) = app.get_webview_window("popup") else { return };
     let h = win.inner_size().map(|s| s.height as i32).unwrap_or(400);
     set_rect(&win, popup_rect(p.bar, p.anchor, p.width, h, p.edge, p.mon, p.gap));
+    crate::glass::refresh_popup(&app);
 }
 
 // ---- Popup ----
@@ -632,6 +634,7 @@ pub fn popup_open(app: AppHandle, window: WebviewWindow, instance: String, x: f6
     // Size first, then tell the page: the page fits the window to its content right away,
     // and a size set after that would undo it (a panel stuck too short, with a scrollbar).
     set_rect(&popup, r);
+    crate::glass::refresh_popup(&app); // Liquid Glass: what is behind it, before it shows
     let _ = app.emit("popup:show", &instance);
     // Hover previews must not steal focus from the user's app: make the window
     // non-activating for them, then show it through Tauri so its visible state stays right.

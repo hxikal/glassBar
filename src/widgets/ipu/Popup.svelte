@@ -2,7 +2,7 @@
   import { MapPin, RefreshCw } from '@lucide/svelte';
   import { ipc } from '../../lib/ipc';
   import type { PopupProps } from '../types';
-  import { BANDS, bandOf } from './bands';
+  import { BANDS, bandOf, glassInkOf } from './bands';
   import type { IpuSettings } from './index';
   import { label, liveIpu, selectionKey } from './ipu.svelte';
   import { updateWidgetSettings } from '../../lib/config.svelte';
@@ -37,7 +37,7 @@
 {#if ipu.r}
   {@const r = ipu.r}
   {@const b = BANDS[r.band]}
-  <div class="hero" style:--c={b.color}>
+  <div class="hero" style:--c={b.color} style:--ink={glassInkOf(r.band)}>
     <span class="lbl">{label(r)}</span>
     <span class="big">{Math.round(r.value)}</span>
     <span class="band">{b.name}</span>
@@ -72,6 +72,14 @@
   .browse { padding: 10px; margin-bottom: 10px; }
   .hero { display: flex; flex-direction: column; align-items: center; padding: 18px; border-radius: calc(20px * var(--rs)); margin-bottom: 12px;
           background: color-mix(in srgb, var(--c) 30%, var(--pill)); border: 1px solid color-mix(in srgb, var(--c) 60%, transparent); }
+  /* Liquid Glass: the reading sits in tinted glass, like the dock pill. */
+  :global(:root[data-preset='liquid']:not([data-solid='true'])) .hero {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 55%), color-mix(in srgb, var(--c) 55%, transparent);
+    border-color: color-mix(in srgb, var(--c) 70%, #fff);
+    box-shadow: inset 1.5px 1.5px 0 -0.5px rgba(255, 255, 255, 0.75), inset 0 -10px 16px -10px rgba(0, 0, 0, 0.25),
+      0 6px 20px color-mix(in srgb, var(--c) 35%, transparent);
+    color: var(--ink);
+  }
   .lbl { font-size: 12px; font-weight: 500; opacity: 0.8; }
   .big { font-size: 52px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
   .band { font-weight: 600; }

@@ -2,20 +2,20 @@
   // The whole pill takes the status colour (blue → red), so air quality reads at a glance.
   import { Wind } from '@lucide/svelte';
   import type { PillProps } from '../types';
-  import { BANDS } from './bands';
+  import { BANDS, glassInkOf, inkOf } from './bands';
   import type { IpuSettings } from './index';
   import { label, liveIpu, selectionKey } from './ipu.svelte';
 
   let { settings, vertical }: PillProps<IpuSettings> = $props();
   const ipu = liveIpu(() => selectionKey(settings));
   const band = $derived(ipu.r ? BANDS[ipu.r.band] : null);
-  // Dark text on the light colours (yellow, green), white on the rest.
-  const ink = $derived(ipu.r && ['unhealthy', 'moderate'].includes(ipu.r.band) ? '#1c1c1e' : '#fff');
+  const ink = $derived(ipu.r ? inkOf(ipu.r.band) : null);
+  const glassInk = $derived(ipu.r ? glassInkOf(ipu.r.band) : null);
 </script>
 
 {#if vertical}
 <!-- Left/right dock: one tile in the status colour. -->
-<div class="side ipu" class:coloured={!!band} style:--c={band?.color} style:--ink={ink}
+<div class="side ipu" class:coloured={!!band} style:--c={band?.color} style:--ink={ink} style:--ink-glass={glassInk}
      title={ipu.r ? `${label(ipu.r)} ${ipu.r.value} · ${band?.name} · ${ipu.r.station?.name ?? ''}` : 'Air quality'}>
   {#if ipu.r}
     <span class="side-k ink">{ipu.r.kind === 'ipu' ? 'IPU' : 'AQI'}</span>
@@ -26,7 +26,7 @@
   {/if}
 </div>
 {:else}
-<div class="pill ipu" class:coloured={!!band} style:--c={band?.color} style:--ink={ink}
+<div class="pill ipu" class:coloured={!!band} style:--c={band?.color} style:--ink={ink} style:--ink-glass={glassInk}
      title={ipu.r ? `${label(ipu.r)} ${ipu.r.value} · ${band?.name} · ${ipu.r.station?.name ?? ''}` : 'Air quality'}>
   {#if ipu.r}
     <Wind size={14} />
@@ -54,5 +54,5 @@
   .stack { display: flex; flex-direction: column; line-height: 1.15; }
   .row { white-space: nowrap; }
   .name { font-size: 10.5px; font-weight: 500; opacity: 0.9; white-space: nowrap; }
-  .side.ipu.coloured .ink { color: var(--ink); opacity: 0.85; }
+  .side.ipu.coloured .ink { color: inherit; opacity: 0.85; }
 </style>

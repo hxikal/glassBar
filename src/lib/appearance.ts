@@ -6,10 +6,10 @@ export type ThemePreset = Theme['preset'];
 export type Style = Theme['style'];
 
 /** Fields owned by the theme axis and by the style axis. Accent and saved presets are neither. */
-type ThemeFields = Pick<Theme, 'mode' | 'nativeBlur' | 'material' | 'opacity' | 'panelOpacity' | 'cardOpacity' | 'bg' | 'contrast' | 'blur'>;
+type ThemeFields = Pick<Theme, 'mode' | 'nativeBlur' | 'material' | 'opacity' | 'panelOpacity' | 'cardOpacity' | 'bg' | 'contrast' | 'blur' | 'glassBlur' | 'glassPanelBlur'>;
 type StyleFields = Pick<Theme, 'radius' | 'shadow' | 'border' | 'iconScale' | 'spacing' | 'motion'>;
 
-const base: ThemeFields = { mode: 'auto', nativeBlur: true, material: 'blur', opacity: 0, panelOpacity: 0, cardOpacity: 1, bg: null, contrast: 'normal', blur: 24 };
+const base: ThemeFields = { mode: 'auto', nativeBlur: true, material: 'blur', opacity: 0, panelOpacity: 0, cardOpacity: 1, bg: null, contrast: 'normal', blur: 24, glassBlur: 2, glassPanelBlur: 8 };
 
 /** `style`: a design style the theme brings along (Liquid Glass needs big soft corners). */
 export const THEMES: Record<ThemePreset, { label: string; hint: string; set: ThemeFields; style?: Style }> = {

@@ -39,7 +39,7 @@ pub fn pointer_away(rects: &[Rect], x: i32, y: i32) -> bool { !rects.iter().any(
 
 static WATCH: AtomicU64 = AtomicU64::new(0);
 
-fn rect_of(w: &WebviewWindow) -> Option<Rect> {
+pub(crate) fn rect_of(w: &WebviewWindow) -> Option<Rect> {
     let (p, s) = (w.inner_position().ok()?, w.inner_size().ok()?);
     Some(Rect { x: p.x, y: p.y, w: s.width as i32, h: s.height as i32 })
 }

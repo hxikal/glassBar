@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.14 — 2026-11-03
+
+### New
+- **Liquid Glass shows what is really behind it.** The dock and its panels show the wallpaper, or the window under a panel, through the glass: lightly blurred and bent at the rim like thick glass, with a lit edge and a darker lower edge. Widgets on the dock and cards in panels become frosted insets. The tint rises by itself over bright content so text stays readable. GlassBar takes a picture of the screen behind it when a panel opens and every 30 seconds for the dock (every 2 seconds when the dock auto-hides or floats). The dock never leaves your screen while it does; a screen recorder may miss it for a frame.
+- **Dock glass blur and Panel glass blur** in Settings › Appearance › Materials while Liquid Glass is the theme. Lower is clearer; 0 shows what's behind sharp, only bent at the edges.
+
+### Changed
+- **The IPU widget keeps its colour in Liquid Glass.** The air-quality pill and the big reading in its panel are tinted glass in the status colour (blue, green, yellow, orange, red), with white text except on yellow.
+- **Overlay blur** in Settings › Appearance › Advanced no longer changes Liquid Glass; it only blurs overlays such as the Snap hint, as its name says.
+
 ## 0.6.13 — 2026-11-03
 
 ### New
