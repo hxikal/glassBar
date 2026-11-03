@@ -45,6 +45,20 @@ export const leftPct = (usedPct: number) => Math.max(0, Math.min(100, Math.round
 /** The % the user chose to see: what's left (default) or what's used. */
 export const shownPct = (usedPct: number, show: 'left' | 'used') => (show === 'used' ? 100 - leftPct(usedPct) : leftPct(usedPct));
 
+/** Warning colour from what is used, whichever way it is shown: green under 70% used
+ *  (over 30% left), amber to 89% (11–30% left), red from 90% (10% or less left). */
+export function tone(usedPct: number): string {
+  const u = 100 - leftPct(usedPct);
+  return u >= 90 ? '#ff453a' : u >= 70 ? '#ff9f0a' : '#30d158';
+}
+
+/** "97% used" / "3% left": never a bare number. */
+export const pctLabel = (usedPct: number, show: 'left' | 'used') => `${shownPct(usedPct, show)}% ${show}`;
+
+/** Hover text with both sides: "97% used · 3% left · resets in 2d 4h". */
+export const bothTip = (usedPct: number, resetIn: string) =>
+  `${pctLabel(usedPct, 'used')} · ${pctLabel(usedPct, 'left')} · resets in ${resetIn}`;
+
 /** "claude-opus-5-5" -> "Opus 5.5", unknown names kept. */
 export function modelName(m: string): string {
   const x = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/.exec(m);

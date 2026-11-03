@@ -1,17 +1,20 @@
 <script lang="ts">
-  import { RefreshCw } from '@lucide/svelte';
+  import { RefreshCw, Settings } from '@lucide/svelte';
   import PanelHeader from '../../lib/PanelHeader.svelte';
   import { ipc, type AiDay } from '../../lib/ipc';
-  import { loadTone } from '../../lib/side';
   import { relTime } from '../../lib/time';
   import type { PopupProps } from '../types';
   import type { AiUsageSettings } from './index';
-  import { barAt, fmtLeft, fmtTokens, modelName, shownPct, tipLeft } from './format';
+  import { barAt, bothTip, fmtLeft, fmtTokens, modelName, pctLabel, pillRows, tipLeft } from './format';
   import { updateWidgetSettings } from '../../lib/config.svelte';
   import { liveLimits } from './limits.svelte';
+  import Meter from './Meter.svelte';
+  import QuickSettings from './QuickSettings.svelte';
 
   let { instance, settings }: PopupProps<AiUsageSettings> = $props();
   const lim = liveLimits();
+  let quick = $state(false);
+  let gear = $state<HTMLElement>();
 
   // Daily tokens from local Claude Code logs, read each time the panel opens.
   let days = $state<AiDay[]>([]);
@@ -54,20 +57,20 @@
 </script>
 
 <PanelHeader title="AI Usage">
-  <div class="seg" role="group" aria-label="Show percent">
-    {#each ['left', 'used'] as const as m (m)}
-      <button class:sel={settings.show === m} aria-pressed={settings.show === m} onclick={() => updateWidgetSettings(instance, { show: m })}>{m === 'left' ? 'Left' : 'Used'}</button>
-    {/each}
-  </div>
   <button class="icon-btn" class:spin={lim.loading || loadingDays} onclick={refresh} aria-label="Refresh" title="Refresh"><RefreshCw size={15} /></button>
+  <button class="icon-btn" class:on={quick} bind:this={gear} onclick={() => (quick = !quick)} aria-label="Quick settings" title="Quick settings" aria-expanded={quick}><Settings size={15} /></button>
 </PanelHeader>
+{#if quick}
+  <QuickSettings {settings} labels={pillRows(lim.l?.windows ?? []).map((r) => r.label)} {gear}
+    save={(p) => updateWidgetSettings(instance, p)} close={() => (quick = false)} />
+{/if}
 
 {#if lim.l}
   <div class="limits">
     {#each lim.l.windows as w (w.key)}
-      <div class="card lim">
-        <div class="row"><span class="dim small">{w.name}</span><b>{shownPct(w.usedPct, settings.show)}% {settings.show}</b></div>
-        <span class="meter"><i style:width="{shownPct(w.usedPct, settings.show)}%" style:background={loadTone(w.usedPct)}></i></span>
+      <div class="card lim" title={bothTip(w.usedPct, w.resetsAt ? fmtLeft(w.resetsAt - Date.now()) : '–')}>
+        <div class="row"><span class="dim small">{w.name}</span><b>{pctLabel(w.usedPct, settings.show)}</b></div>
+        <Meter usedPct={w.usedPct} show={settings.show} track={settings.track} h={12} />
         <div class="dim small">{w.resetsAt ? `Resets in ${fmtLeft(w.resetsAt - Date.now())} · ${when(w.resetsAt)}` : 'No reset scheduled'}</div>
       </div>
     {/each}
@@ -132,14 +135,10 @@
 <style>
   .limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
   .lim { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-  .seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: calc(10px * var(--rs)); background: var(--pill); }
-  .seg button { padding: 3px 9px; font-size: 11px; border-radius: calc(8px * var(--rs)); }
-  .seg button.sel { background: var(--accent); color: var(--on-accent); }
+  .icon-btn.on { color: var(--accent); }
   .share { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   b { font-variant-numeric: tabular-nums; }
-  .meter { display: block; height: 6px; border-radius: 3px; background: color-mix(in srgb, currentColor 18%, transparent); overflow: hidden; }
-  .meter i { display: block; height: 100%; border-radius: 3px; }
   .chart { margin-top: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
   .plot { position: relative; cursor: crosshair; }
   svg { display: block; }

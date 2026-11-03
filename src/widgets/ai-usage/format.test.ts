@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barAt, fmtLeft, fmtTokens, leftPct, modelName, pillRows, shownPct, tipLeft, visibleRows } from './format';
+import { barAt, bothTip, fmtLeft, pctLabel, tone, fmtTokens, leftPct, modelName, pillRows, shownPct, tipLeft, visibleRows } from './format';
 
 describe('ai usage format', () => {
   it('shortens token counts', () => {
@@ -48,5 +48,12 @@ describe('ai usage format', () => {
     expect(leftPct(130)).toBe(0);
     expect(shownPct(86.4, 'left')).toBe(14);
     expect(shownPct(86.4, 'used')).toBe(86);
+  });
+  it('labels and colours used vs left from the same usage', () => {
+    expect(pctLabel(97, 'used')).toBe('97% used');
+    expect(pctLabel(97, 'left')).toBe('3% left');
+    expect(bothTip(97, '2d 4h')).toBe('97% used · 3% left · resets in 2d 4h');
+    const RED = '#ff453a', AMBER = '#ff9f0a', GREEN = '#30d158';
+    expect([tone(97), tone(90), tone(89.4), tone(70), tone(69.4), tone(0)]).toEqual([RED, RED, AMBER, AMBER, GREEN, GREEN]);
   });
 });
