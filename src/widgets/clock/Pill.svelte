@@ -7,9 +7,10 @@
   import { ticker } from './time.svelte';
   import { zonesOf } from './zones';
   import WeatherPart from './WeatherPart.svelte';
-  import { PartyPopper } from '@lucide/svelte';
+  import { PartyPopper, X } from '@lucide/svelte';
+  import { updateWidgetSettings } from '../../lib/config.svelte';
   import { holidaysFor } from './holidays.svelte';
-  import { daysUntil, whenLabel } from './holidays';
+  import { daysUntil, freshKeys, holidayKey, whenLabel } from './holidays';
 
   let { instance, size, settings, vertical }: PillProps<ClockSettings> = $props();
   // Ticks every second only while seconds are shown; otherwise on each minute boundary.
@@ -22,11 +23,18 @@
   const sideTime = $derived(time(clock.now, settings, false));
   // Next public holiday, when it is close enough to show beside the clock.
   const hol = holidaysFor(() => settings, () => clock.now);
+  // The first one not hidden with its X (a hidden multi-day holiday stays hidden on all its days).
   const next = $derived.by(() => {
-    const h = settings.holidays ? hol.list[0] : undefined;
+    if (!settings.holidays) return null;
+    const hidden = settings.holidayHidden ?? [];
+    const h = hol.list.find((x) => !hidden.includes(holidayKey(hol.all, x)));
     const days = h ? daysUntil(h.date, hol.today) : Infinity;
-    return h && days <= Number(settings.holidayDays) ? { ...h, days } : null;
+    return h && days <= Number(settings.holidayDays) ? { ...h, days, key: holidayKey(hol.all, h) } : null;
   });
+  function dismiss(e: MouseEvent, key: string) {
+    e.stopPropagation();
+    updateWidgetSettings(instance, { holidayHidden: [...freshKeys(settings.holidayHidden ?? [], hol.today), key] });
+  }
   const sideDay = $derived(new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric' }).format(clock.now));
 
   // "Popup" appearance: hovering the clock shows the big clock + world clocks, without a click.
@@ -72,6 +80,8 @@
     <PartyPopper size={14} />
     {#if size !== 'small'}<span class="hname">{next.name}</span>{/if}
     <b>{next.days === 0 ? 'Today' : next.days === 1 ? 'Tmrw' : `${next.days}d`}</b>
+    <button class="hx" data-own-drag title="Hide until next holiday" aria-label="Hide until next holiday"
+            onclick={(e) => dismiss(e, next!.key)}><X size={10} strokeWidth={3} /></button>
   </span>
 {/if}
 </div>
@@ -84,7 +94,8 @@
   /* Next holiday (optional) on the right, the same pill shape continued. */
   .withhol > .clock { border-top-right-radius: calc(4px * var(--rs)); border-bottom-right-radius: calc(4px * var(--rs)); }
   .hol {
-    display: flex; align-items: center; gap: 5px; height: 100%; padding: 0 10px; white-space: nowrap;
+    position: relative;
+    display: flex; align-items: center; gap: 5px; height: 100%; padding: 0 18px 0 10px; white-space: nowrap;
     border-radius: 4px var(--radius-pill) var(--radius-pill) 4px;
     background: color-mix(in srgb, #ff9f43 22%, var(--pill)); font-size: 12px;
   }
@@ -92,6 +103,14 @@
   .hol :global(svg) { color: #ff9f43; flex: none; }
   .hname { max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
   .hol b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  /* X in the top-right corner: faint until the holiday segment is hovered. */
+  .hx {
+    position: absolute; top: 2px; right: 2px; width: 14px; height: 14px; padding: 0; display: grid; place-items: center;
+    border-radius: 50%; color: var(--fg); opacity: 0.35; background: transparent; transition: opacity 0.15s, background 0.15s;
+  }
+  .hol:hover .hx { opacity: 0.8; }
+  .hx:hover { opacity: 1; background: color-mix(in srgb, var(--fg) 18%, transparent); }
+  .hol .hx :global(svg) { color: inherit; }
   .time { font-weight: 600; }
   .date { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .dot { margin: 0 -2px; }
