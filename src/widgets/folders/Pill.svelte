@@ -51,12 +51,8 @@
         action: () => updateWidgetSettings(instance, { maxShown: n }) })) },
       { text: 'Show folder names', checked: settings.showNames, action: () => updateWidgetSettings(instance, { showNames: !settings.showNames }) },
       { text: 'Open folders on hover', checked: settings.openOnHover, action: () => updateWidgetSettings(instance, { openOnHover: !settings.openOnHover }) },
-      ...(f ? ['-' as const, { text: 'Delete folder', items: [
-        // A menu as the confirmation: the shortcuts go, the apps themselves are untouched.
-        { text: `Delete ${f.name ? `“${f.name}”` : 'this folder'}${f.apps.length ? ` and its ${f.apps.length} shortcut${f.apps.length > 1 ? 's' : ''}` : ''}`,
-          action: () => save(folders.filter((x) => x.id !== f.id)) },
-        { text: 'Keep it', action: () => {} },
-      ] }] : []),
+      // Deletes at once: the folder's shortcuts go, the apps themselves are untouched.
+      ...(f ? ['-' as const, { text: 'Delete folder', action: () => save(folders.filter((x) => x.id !== f.id)) }] : []),
     ]);
   }
 
@@ -104,7 +100,7 @@
   {#each vis.shown as f (f.id)}
     {@const first = f.apps.slice(0, 4)}
     <button class="folder" class:side={vertical} class:over={over === f.id} class:landed={landed === f.id} bind:this={tiles[f.id]} data-folder-drop={f.id}
-            title={`${f.name || 'Folder'} · ${f.apps.length ? f.apps.map(pinName).join(', ') : 'empty — click to add apps, or drag one here'}`}
+            title={`${f.name ? `${f.name} · ` : ''}${f.apps.length ? f.apps.map(pinName).join(', ') : 'Empty — click to add apps, or drag one here'}`}
             onclick={(e) => open(e, f)} oncontextmenu={(e) => menu(e, f)}
             onpointerenter={(e) => enter(e, f)} onpointerleave={hp.leave}>
       <span class="grid" class:empty={!first.length}>

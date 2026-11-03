@@ -3,7 +3,8 @@
   // apps in a 4-column grid. Click an app to open it (or switch to its window). Drag to
   // reorder; drag one out of the grid to take it out of the folder. + adds a program or
   // shortcut, and so does dropping one from Explorer onto the panel. With id ALL it lists every
-  // folder first; picking one opens it here, with a way back.
+  // folder first (hold one and drag to reorder: the first ones show on the dock); picking one
+  // opens it here, with a way back.
   import { ChevronLeft, Plus } from '@lucide/svelte';
   import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
   import { ipc } from '../../lib/ipc';
@@ -14,6 +15,7 @@
   import manifest, { type FoldersSettings } from './index';
   import { settingsOf } from '../types';
   import { ALL, addApps, isApp, moveApp, pinId, pinName, removeApp, replace, type Folder } from './folders';
+  import { reorder } from './reorder.svelte';
   import { iconOf, liveWindows } from './appIcons.svelte';
   import AppPicker from './AppPicker.svelte';
 
@@ -29,7 +31,7 @@
   const wins = liveWindows();
 
   function launch(p: Pin) {
-    if (swallow) { swallow = false; return; }
+    if (apps.swallowClick()) return;
     const ws = wins.of(p);
     const w = ws.length ? nextWindow({ key: '', path: p.path, name: '', windows: ws }) : undefined;
     if (w) ipc.appActivate(w.id); else ipc.appLaunch(p.path, p.args ?? '', p.aumid ?? null).catch(() => {});
@@ -39,18 +41,14 @@
   // focus and close a click-opened panel).
   let picking = $state(false);
   const addOne = (p: Pin) => { if (folder) save(addApps(folder, [p])); };
-  // A folder in the All folders list: open it, or delete it (a submenu as the confirmation,
-  // like on the dock; the apps themselves are untouched).
+  // A folder in the All folders list: open it, or delete it at once (its shortcuts go; the
+  // apps themselves are untouched).
   function folderMenu(e: MouseEvent, f: Folder) {
     e.preventDefault();
     showMenu([
       { text: 'Open', action: () => (picked = f.id) },
       '-',
-      { text: 'Delete folder', items: [
-        { text: `Delete ${f.name ? `“${f.name}”` : 'this folder'}${f.apps.length ? ` and its ${f.apps.length} shortcut${f.apps.length > 1 ? 's' : ''}` : ''}`,
-          action: () => settings && updateWidgetSettings(instance, { folders: settings.folders.filter((x) => x.id !== f.id) }) },
-        { text: 'Keep it', action: () => {} },
-      ] },
+      { text: 'Delete folder', action: () => settings && updateWidgetSettings(instance, { folders: settings.folders.filter((x) => x.id !== f.id) }) },
     ]);
   }
   function menu(e: MouseEvent, p: Pin, i: number) {
@@ -67,48 +65,19 @@
     ]);
   }
 
-  // ---- Drag: hold or move to pick an app up; it takes the place of the nearest cell, the
-  // others make room. Released outside the grid, it leaves the folder. Esc puts it back. ----
-  let grid = $state<HTMLElement>();
-  let dragKey = $state<string | null>(null);
-  let order = $state<Pin[] | null>(null);
-  let outside = $state(false);
-  let swallow = false;
-  const shown = $derived(order ?? folder?.apps ?? []);
-  function down(e: PointerEvent, p: Pin) {
-    if (e.button !== 0 || !folder) return;
-    const start = { x: e.clientX, y: e.clientY };
-    let picked = false;
-    const pick = () => { picked = true; dragKey = pinId(p); order = [...folder!.apps]; };
-    const timer = setTimeout(pick, 250);
-    const move = (ev: PointerEvent) => {
-      if (!picked && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 6) { clearTimeout(timer); pick(); }
-      if (!picked || !order || !grid) return;
-      const g = grid.getBoundingClientRect();
-      outside = ev.clientX < g.left - 24 || ev.clientX > g.right + 24 || ev.clientY < g.top - 24 || ev.clientY > g.bottom + 24;
-      if (outside) return;
-      const cells = [...grid.querySelectorAll<HTMLElement>('.app')].map((c) => { const r = c.getBoundingClientRect(); return Math.hypot(ev.clientX - (r.left + r.width / 2), ev.clientY - (r.top + r.height / 2)); });
-      const to = cells.indexOf(Math.min(...cells));
-      const from = order.findIndex((x) => pinId(x) === dragKey);
-      if (to >= 0 && to !== from) order = moveApp({ id, name: '', apps: order }, dragKey!, to).apps;
-    };
-    const finish = (keep: boolean) => {
-      clearTimeout(timer);
-      removeEventListener('pointermove', move);
-      removeEventListener('pointerup', up);
-      removeEventListener('keydown', esc);
-      if (picked && keep && folder) {
-        swallow = !outside; // released outside: no click follows to swallow
-        save(outside ? removeApp(folder, dragKey!) : { ...folder, apps: order ?? folder.apps });
-      }
-      dragKey = null; order = null; outside = false;
-    };
-    const up = () => finish(true);
-    const esc = (k: KeyboardEvent) => { if (k.key === 'Escape') finish(false); };
-    addEventListener('pointermove', move);
-    addEventListener('pointerup', up);
-    addEventListener('keydown', esc);
-  }
+  // Drag apps to reorder (released outside the grid: out of the folder), and folders in the
+  // All folders list (a longer hold, since a click opens one).
+  const apps = reorder<Pin>(pinId, '.app:not(.add)');
+  const shown = $derived(apps.order ?? folder?.apps ?? []);
+  const dragApp = (e: PointerEvent, p: Pin) => folder && apps.down(e, p, folder.apps, (order, out, k) => {
+    if (folder) save(out ? removeApp(folder, k) : { ...folder, apps: order });
+  });
+  const flist = reorder<Folder>((f) => f.id, '.app', 400);
+  const allShown = $derived(flist.order ?? settings?.folders ?? []);
+  const dragFolder = (e: PointerEvent, f: Folder) => settings && flist.down(e, f, settings.folders, (order) => {
+    updateWidgetSettings(instance, { folders: order });
+  });
+  const openFolder = (f: Folder) => { if (!flist.swallowClick()) picked = f.id; };
 
   // Programs and shortcuts dropped from Explorer anywhere on the panel.
   let dropping = $state(false);
@@ -129,20 +98,23 @@
 {#if showing === ALL}
   <div class="folderp">
     <p class="title">All folders</p>
-    <div class="grid">
-      {#each settings?.folders ?? [] as f (f.id)}
-        <button class="app" onclick={() => (picked = f.id)} oncontextmenu={(e) => folderMenu(e, f)}
-                title={(f.apps.map(pinName).join(', ') || 'Empty folder') + ' · right-click to delete'}>
+    <div class="grid" bind:this={flist.grid}>
+      {#each allShown as f (f.id)}
+        <button class="app" class:lifted={flist.dragKey === f.id} onpointerdown={(e) => dragFolder(e, f)}
+                onclick={() => openFolder(f)} oncontextmenu={(e) => folderMenu(e, f)}
+                title={(f.apps.map(pinName).join(', ') || 'Empty folder') + ' · hold and drag to move · right-click to delete'}>
           <span class="mini">
             {#each f.apps.slice(0, 4) as p (pinId(p))}
               {@const src = iconOf(p)}
               {#if src}<img src={src} alt="" draggable="false" />{:else}<i class="ph">{pinName(p)[0]?.toUpperCase()}</i>{/if}
             {/each}
           </span>
-          <span class="nm ellipsis">{f.name || 'Folder'}</span>
+          <!-- No name: left blank (a no-break space keeps the row height). -->
+          <span class="nm ellipsis">{f.name || ' '}</span>
         </button>
       {/each}
     </div>
+    {#if (settings?.folders.length ?? 0) > 1}<p class="hint dim">Hold a folder and drag to move it · the first ones show on the dock</p>{/if}
   </div>
 {:else if folder}
   <div class="folderp" class:dropping>
@@ -153,13 +125,13 @@
     {#if picking}
       <AppPicker have={folder.apps} add={addOne} done={() => (picking = false)} />
     {:else}
-    <div class="grid" bind:this={grid}>
+    <div class="grid" bind:this={apps.grid}>
       {#each shown as p, i (pinId(p))}
         {@const src = iconOf(p)}
         {@const on = wins.of(p).length > 0}
-        <button class="app" class:lifted={dragKey === pinId(p)} class:leaving={dragKey === pinId(p) && outside}
-                title={dragKey === pinId(p) && outside ? 'Release to take it out of the folder' : p.path}
-                onpointerdown={(e) => down(e, p)} onclick={() => launch(p)} oncontextmenu={(e) => menu(e, p, i)}>
+        <button class="app" class:lifted={apps.dragKey === pinId(p)} class:leaving={apps.dragKey === pinId(p) && apps.outside}
+                title={apps.dragKey === pinId(p) && apps.outside ? 'Release to take it out of the folder' : p.path}
+                onpointerdown={(e) => dragApp(e, p)} onclick={() => launch(p)} oncontextmenu={(e) => menu(e, p, i)}>
           {#if src}<img src={src} alt="" width="36" height="36" draggable="false" />{:else}<i class="ph">{pinName(p)[0]?.toUpperCase()}</i>{/if}
           <span class="nm ellipsis">{pinName(p)}</span>
           {#if on}<span class="run"></span>{/if}
@@ -167,7 +139,7 @@
       {/each}
       <button class="app add" onclick={() => (picking = true)} title="Add apps to this folder"><span class="plus"><Plus size={18} /></span><span class="nm">Add app</span></button>
     </div>
-    <p class="hint dim">{outside ? 'Release to take it out of the folder' : folder.apps.length ? 'Drag to reorder · drag out to remove · drop programs here to add' : 'Drop programs or shortcuts here, or use Add app'}</p>
+    <p class="hint dim">{apps.outside ? 'Release to take it out of the folder' : folder.apps.length ? 'Drag to reorder · drag out to remove · drop programs here to add' : 'Drop programs or shortcuts here, or use Add app'}</p>
     {/if}
   </div>
 {:else}
