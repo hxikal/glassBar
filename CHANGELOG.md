@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.13 — 2026-11-03
+
+### New
+- **Dev Stack handles your whole local stack**, in four tabs:
+  - **Services:** Laragon's services as before, plus database Windows services such as PostgreSQL (start/stop through Windows' admin prompt, so they shut down cleanly) and Docker Desktop with its containers when it is installed.
+  - **Running:** every dev server listening on localhost (Vite, Next.js, Nuxt, Astro, Vue CLI, artisan serve, Django, Flask, php -S…) with its port and folder. Click a port to open it. Stop ends the whole `npm run dev` chain. "Show all" lists other apps that keep a local port open. Databases and GlassBar itself can't be stopped there.
+  - **Projects:** folders with a package.json `dev`, `serve` (Vue CLI) or `start` script get Start/Stop. Start opens a minimized console running it (`npm run dev`, `npm run serve`…, or pnpm, yarn or bun, from the lockfile), so the logs stay readable. www is always searched; add more folders in the widget's settings. The .test sites are listed below, now with a terminal button.
+  - **Versions:** switch PHP the way Laragon's menu does (Apache/Nginx and new terminals; Apache restarts if it was running), Node through nvm (Windows asks for admin) or Laragon's Node, and Python. It shows what a new terminal really runs and warns when something earlier in PATH wins. Each switch first backs up laragon.ini, fcgid.conf and your PATH to `usr\glassbar-backup`. Buttons for php.ini and HeidiSQL.
+- **Move folders around in App Folders.** In All folders, hold a folder and drag it to a new place; Esc puts it back. The first folders in the list are the ones on the dock.
+
+### Changed
+- **Delete folder deletes right away** (right-click a folder on the dock or in All folders), with no "Keep it" step. Only the folder's shortcuts go; the apps stay installed.
+- **A folder with no name shows no name.** All folders and the dock's tooltip leave it blank instead of saying "Folder".
+
+### Fixed
+- **Starting Nginx from Dev Stack** now also starts PHP for it (php-cgi on Laragon's upstream ports), so .php pages work as when Laragon starts it.
+
 ## 0.6.12 — 2026-11-03
 
 ### New
