@@ -31,3 +31,25 @@ export function daysUntil(date: string, today: string): number {
 }
 
 export const whenLabel = (days: number) => (days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `in ${days} days`);
+
+/** "Second Day of Chinese New Year", "Hari Raya Haji (Day 2) (tentative)", "Day off for Thaipusam"
+ *  -> the holiday they belong to. */
+const baseName = (n: string) => n.toLowerCase()
+  .replace(/\((tentative|day \d)\)|day off for|second day of|observed|holiday|day \d|'s day|\bday\b/g, '')
+  .replace(/\s+/g, ' ').trim();
+
+const dayBefore = (d: string) => ymd(new Date(Date.parse(d + 'T12:00') - 86_400_000));
+
+/** Dismiss key for `h`: date + name of the first day of its run, so the days of a multi-day
+ *  holiday share one key. `all` = every holiday for the state (past ones too). */
+export function holidayKey(all: Holiday[], h: Holiday): string {
+  let cur = h;
+  for (let prev; (prev = all.find((x) => x.date === dayBefore(cur.date) && baseName(x.name) === baseName(cur.name))); ) cur = prev;
+  return `${cur.date}_${cur.name}`;
+}
+
+/** Dismissed keys still worth keeping: those from the last year. */
+export const freshKeys = (keys: string[], today: string) => {
+  const cut = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
+  return keys.filter((k) => k.slice(0, 10) >= cut);
+};

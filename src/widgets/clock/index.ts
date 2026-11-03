@@ -49,6 +49,8 @@ export interface ClockSettings {
   holidayState: string;
   /** Show it on the clock when it is at most this many days away. */
   holidayDays: '7' | '14' | '30';
+  /** Holidays hidden from the clock with their X: holidays.ts holidayKey, last year only. */
+  holidayHidden: string[];
   /** Umm al-Qura day under each day of the month grid. */
   calHijri: boolean;
   /** ISO week numbers beside the month grid. */
@@ -67,7 +69,7 @@ export default defineWidget<ClockSettings>({
     hour12: false, ampm: 'PM', ampmSize: 'small', leadingZero: 'auto', showSeconds: false, worldSeconds: false,
     dateStyle: 'weekday', dateSep: '/', weekday: 'none', datePattern: 'ddd, D MMM', show: 'both', layout: 'inline', timeSide: 'left', stackAlign: 'center',
     dayNight: true, appearance: 'standard', zones: [], secondTz: '', showWeather: true, weatherUnit: 'c', weatherColorful: true,
-    holidays: true, holidayList: true, holidayState: 'auto', holidayDays: '14', calHijri: true, calWeeks: false,
+    holidays: true, holidayList: true, holidayState: 'auto', holidayDays: '14', holidayHidden: [], calHijri: false, calWeeks: false,
   },
   Pill,
   Popup: { component: Popup, width: 340, height: 640 },

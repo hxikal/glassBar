@@ -17,8 +17,8 @@
 
 <label>Show percent
   <select value={settings.show} onchange={(e) => save({ show: e.currentTarget.value as AiUsageSettings['show'] })}>
-    <option value="left">Left (e.g. 14%)</option>
-    <option value="used">Used (e.g. 86%)</option>
+    <option value="used">Used (e.g. 86% used)</option>
+    <option value="left">Left (e.g. 14% left)</option>
   </select>
 </label>
 <p class="dim" style="font-size:12px;margin-bottom:2px">Show on dock</p>

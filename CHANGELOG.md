@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.12 — 2026-11-03
+
+### New
+- **Hide the next holiday on the clock.** The holiday chip beside the clock has a small X ("Hide until next holiday"). The chip comes back by itself for the next holiday; a multi-day holiday such as Hari Raya is hidden for all its days at once. Hidden holidays are remembered across restarts and forgotten after a year.
+- **Quick settings for AI Usage.** A gear beside Refresh in the AI Usage panel opens a small menu: show Used or Left, which limits are on the dock (Session, Weekly, Fable; at least one stays ticked), bars stacked or in one row, and the background track on or off. Changes apply at once; Esc or a click outside closes it.
+
+### Changed
+- **AI Usage bars are bigger and say what they mean.** Every percentage reads "used" or "left", never a bare number. Left mode draws a battery that drains as you use it. The colour always follows how much is used: green under 70% used, amber to 89%, red from 90%, so 97% used and 3% left are both red. Hover shows both sides and the time to reset ("97% used · 3% left · resets in 2d 4h"). Bars are 10–12 px with rounded ends and move smoothly when the numbers change; with three limits on the dock they get slimmer so they still fit.
+- **New AI Usage widgets start with Used and Weekly only.** Your current choices stay.
+- **Hijri dates in the calendar are off by default.** Turn them on in the clock's Calendar & holidays options; if you switched them on or off before, your choice stays.
+
 ## 0.6.11 — 2026-11-03
 
 ### New
