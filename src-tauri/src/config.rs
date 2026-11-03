@@ -120,6 +120,9 @@ pub struct Theme {
     pub accent: String,
     /// Blur of overlays drawn inside GlassBar's own windows, CSS px.
     pub blur: u32,
+    /// Liquid Glass: blur of what shows through the dock and through panels, CSS px.
+    pub glass_blur: f64,
+    pub glass_panel_blur: f64,
     /// How solid the dock background is, 0..1 (0 = only the Windows material).
     pub opacity: f64,
     /// Same for expanded panels (flyouts, Quick Settings) and for the dock's widget cards.
@@ -148,7 +151,7 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self { mode: ThemeMode::Auto, preset: "system".into(), style: "glassbar".into(), accent: "#0A84FF".into(),
-               blur: 24, opacity: 0.0, panel_opacity: 0.0, card_opacity: 1.0, native_blur: true, material: "blur".into(),
+               blur: 24, glass_blur: 2.0, glass_panel_blur: 8.0, opacity: 0.0, panel_opacity: 0.0, card_opacity: 1.0, native_blur: true, material: "blur".into(),
                bg: None, contrast: "normal".into(), radius: 16, shadow: 1.0, border: 1.0, icon_scale: 1.0, spacing: 1.0,
                motion: "full".into(), saved: BTreeMap::new() }
     }
@@ -174,6 +177,8 @@ impl Theme {
         f(&mut self.border, 0.0, 2.0, 1.0);
         f(&mut self.icon_scale, 0.8, 1.4, 1.0);
         f(&mut self.spacing, 0.5, 2.0, 1.0);
+        f(&mut self.glass_blur, 0.0, 20.0, 2.0);
+        f(&mut self.glass_panel_blur, 0.0, 30.0, 8.0);
         self.blur = self.blur.min(60);
         self.radius = self.radius.min(24);
         self.saved.retain(|k, v| !k.trim().is_empty() && v.is_object());

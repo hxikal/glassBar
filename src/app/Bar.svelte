@@ -6,6 +6,7 @@
   import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Coffee, Droplet, Maximize2, MoonStar, Pause, Play, Plus, SkipForward, Square, Target, Timer as TimerIcon, PlugZap, Sun, Unplug, Volume2, VolumeX, X } from '@lucide/svelte';
   import { profile, store, update } from '../lib/config.svelte';
   import { events, ipc, type WidgetInst, type WidgetSize } from '../lib/ipc';
+  import { glass } from '../lib/liquid';
   import { isMainDock } from '../lib/dock';
   import { FLASH } from './chargeFlash';
   import { ALERT_DEFAULTS, arrive, holdMs, viewOf, type AlertKind, type DockAlert } from './dockAlert';
@@ -552,7 +553,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="surface bar dock" class:vertical class:edit class:flashing={!!alert} class:focusing={showFocus} onpointerdown={onBarDown} oncontextmenu={onContext}
+<div class="surface bar dock" use:glass class:vertical class:edit class:flashing={!!alert} class:focusing={showFocus} onpointerdown={onBarDown} oncontextmenu={onContext}
      oncontextmenucapture={() => ipc.popupHoverHide()}
      onpointerenter={onEnter} onpointermove={focusMove} onpointerleave={focusLeave} data-size={bar.size} data-side={bar.sideWidth ?? 'regular'}>
   <div class="handle start" onpointerdown={(e) => onHandleDown(e, -1)}></div>

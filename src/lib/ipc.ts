@@ -54,7 +54,7 @@ export interface Profile { bar: BarCfg; widgets: WidgetInst[] }
 export interface Theme {
   mode: 'auto' | 'light' | 'dark'; preset: 'light' | 'dark' | 'glass' | 'liquid' | 'system' | 'custom';
   style: 'glassbar' | 'mac' | 'windows' | 'gnome' | 'kde' | 'cinnamon'; accent: string;
-  blur: number; opacity: number; panelOpacity: number; cardOpacity: number;
+  blur: number; glassBlur: number; glassPanelBlur: number; opacity: number; panelOpacity: number; cardOpacity: number;
   nativeBlur: boolean; material: 'acrylic' | 'mica' | 'blur'; bg: string | null; contrast: 'normal' | 'high';
   radius: number; shadow: number; border: number; iconScale: number; spacing: number; motion: 'full' | 'reduced' | 'off';
   saved: Record<string, Record<string, unknown>>;
@@ -513,6 +513,8 @@ export const ipc = {
   transparencyEffects: () => invoke<boolean>('transparency_effects'),
   appearanceSupport: () => invoke<AppearanceSupport>('appearance_support'),
   wallpaperBehind: () => invoke<{ min: number; max: number } | null>('wallpaper_behind'),
+  /** Liquid Glass: the screen behind this window (glass.rs `glass_behind` for the byte layout). */
+  glassBehind: (fresh: boolean) => invoke<ArrayBuffer>('glass_behind', { fresh }),
   langList: () => invoke<KeyboardLayout[]>('lang_list'),
   langSet: (id: number) => invoke<void>('lang_set', { id }),
   windowsNotifications: () => invoke<void>('windows_notifications'),
@@ -527,6 +529,7 @@ export const ipc = {
 export const events = {
   configChanged: (cb: (c: Config) => void) => listen<Config>('config:changed', (e) => cb(e.payload)),
   behindChanged: (cb: (b: { min: number; max: number } | null) => void) => listen<{ min: number; max: number } | null>('appearance:behind', (e) => cb(e.payload)),
+  glassBehind: (cb: () => void) => listen('glass:behind', () => cb()),
   materialChanged: (cb: (m: AppearanceSupport['applied']) => void) => listen<AppearanceSupport['applied']>('appearance:material', (e) => cb(e.payload)),
   captureDone: (cb: (d: CaptureDone) => void) => listen<CaptureDone>('capture:done', (e) => cb(e.payload)),
   /** A scrolling screenshot started (true) or ended (false). */

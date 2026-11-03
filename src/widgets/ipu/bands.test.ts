@@ -15,3 +15,9 @@ it('bandOf matches the Rust thresholds', async () => {
   const { bandOf } = await import('./bands');
   expect([50, 51, 100, 101, 201, 301].map(bandOf)).toEqual(['good', 'moderate', 'moderate', 'unhealthy', 'very_unhealthy', 'hazardous']);
 });
+
+it('picks readable text: dark on light colours, white on see-through glass except yellow', async () => {
+  const { inkOf, glassInkOf } = await import('./bands');
+  expect([inkOf('moderate'), inkOf('unhealthy'), inkOf('good')]).toEqual(['#1c1c1e', '#1c1c1e', '#fff']);
+  expect([glassInkOf('moderate'), glassInkOf('unhealthy'), glassInkOf('hazardous')]).toEqual(['#fff', '#1c1c1e', '#fff']);
+});
