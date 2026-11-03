@@ -163,6 +163,15 @@ export interface AiDay { date: string; input: number; output: number; cacheWrite
 export interface Holiday { date: string; name: string; states: string[] }
 export interface DevService { id: string; name: string; version: string; port: number; running: boolean; enabled: boolean }
 export interface DevStatus { found: boolean; root: string; www: string; services: DevService[]; sites: string[] }
+/** A program listening on a localhost port. `dev` = a dev server; `db` = a database (no Stop here). */
+export interface DevListener { pid: number; name: string; label: string; ports: number[]; dir: string; cmd: string; dev: boolean; db: boolean }
+export interface DevProject { name: string; dir: string; script: string; pm: string; running: boolean; ports: number[]; label: string }
+export interface DevKind { installed: string[]; current: string }
+export interface DevFound { version: string; path: string; shadowed: boolean }
+export interface DevVersions { php: DevKind; nodejs: DevKind; python: DevKind; nvm: DevKind | null; phpTerminal: DevFound | null; nodeTerminal: DevFound | null; laragonRunning: boolean }
+export interface DevWinService { name: string; display: string; running: boolean; pending: boolean }
+export interface DevContainer { id: string; name: string; image: string; running: boolean; status: string; ports: string }
+export interface DevOther { services: DevWinService[]; docker: { running: boolean; containers: DevContainer[] } | null }
 export interface WinRect { id: number; title: string; x: number; y: number; w: number; h: number }
 export interface SnapView { img: string; purpose: 'ocr' | 'region' | 'window' | 'scroll' | 'color' | 'display'; windows: WinRect[]; /** pointer in screenshot px */ cursor: [number, number] | null;
   /** each display in the shot (screenshot px): the overlay spans them all */ displays: [number, number, number, number][];
@@ -439,6 +448,18 @@ export const ipc = {
   devStatus: (root: string) => invoke<DevStatus>('devstack_status', { root }),
   devToggle: (root: string, id: string, start: boolean) => invoke<void>('devstack_toggle', { root, id, start }),
   devOpenLaragon: (root: string) => invoke<void>('devstack_open_laragon', { root }),
+  devOpenTool: (root: string, tool: 'terminal' | 'heidisql' | 'phpini', path = '') => invoke<void>('devstack_open_tool', { root, tool, path }),
+  devPorts: (root: string, dirs: string[]) => invoke<DevListener[]>('devstack_ports', { root, dirs }),
+  devStopPid: (pid: number) => invoke<void>('devstack_stop_pid', { pid }),
+  devProjects: (root: string, dirs: string[]) => invoke<DevProject[]>('devstack_projects', { root, dirs }),
+  devProject: (dir: string, start: boolean) => invoke<void>('devstack_project', { dir, start }),
+  devVersions: (root: string) => invoke<DevVersions>('devstack_versions', { root }),
+  /** Returns a note for the user ('' when there is none). */
+  devSwitch: (root: string, kind: 'php' | 'nodejs' | 'python', version: string) => invoke<string>('devstack_switch', { root, kind, version }),
+  devNvmUse: (version: string) => invoke<void>('devstack_nvm_use', { version }),
+  devOther: () => invoke<DevOther>('devstack_other'),
+  devService: (name: string, start: boolean) => invoke<void>('devstack_service', { name, start }),
+  devDocker: (action: 'desktop' | 'start' | 'stop', id = '') => invoke<void>('devstack_docker', { action, id }),
   fxRates: (base: string, force = false) => invoke<Rates>('fx_rates', { base, force }),
   aiLimits: (force = false) => invoke<AiLimits>('ai_limits', { force }),
   /** Claude Code tokens per local day, oldest first. */

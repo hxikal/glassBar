@@ -26,6 +26,7 @@ mod system;
 mod thermal;
 mod thumbs;
 mod toggles;
+mod userenv;
 pub(crate) mod tray;
 mod windows_list;
 mod wireless;
@@ -200,6 +201,10 @@ impl Shell for WinShell {
     fn activate(&self, id: isize) { windows_list::activate(id) }
     fn close(&self, id: isize) { windows_list::close(id) }
     fn launch(&self, path: &str, args: &str) -> Res<()> { windows_list::launch(path, args) }
+    fn launch_elevated(&self, path: &str, args: &str) -> Res<()> { windows_list::launch_elevated(path, args) }
+    fn user_env(&self, name: &str) -> Option<(String, bool)> { userenv::get(false, name) }
+    fn machine_env(&self, name: &str) -> Option<String> { userenv::get(true, name).map(|v| v.0) }
+    fn set_user_env(&self, name: &str, value: &str, expand: bool) -> Res<()> { userenv::set(name, value, expand) }
     fn launch_aumid(&self, aumid: &str) -> Res<()> { windows_list::launch(&format!("shell:AppsFolder\\{aumid}"), "") }
     fn aumid_for_path(&self, path: &str) -> Option<String> { packages::aumid_for_path(path) }
     fn aumid_icon(&self, aumid: &str) -> Option<String> { windows_list::aumid_icon(aumid) }

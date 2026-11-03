@@ -170,10 +170,16 @@ pub fn close(id: isize) {
     unsafe { let _ = PostMessageW(Some(h(id)), WM_CLOSE, WPARAM(0), LPARAM(0)); }
 }
 
-pub fn launch(path: &str, args: &str) -> Res<()> {
-    let (op, file, params) = (wide("open"), wide(path), wide(args));
+pub fn launch(path: &str, args: &str) -> Res<()> { shell_exec("open", path, args, SW_SHOWNORMAL) }
+
+/// Like `launch`, but Windows asks for admin first (the UAC prompt), and no window shows
+/// (it runs commands such as `sc stop`).
+pub fn launch_elevated(path: &str, args: &str) -> Res<()> { shell_exec("runas", path, args, SW_HIDE) }
+
+fn shell_exec(verb: &str, path: &str, args: &str, show: SHOW_WINDOW_CMD) -> Res<()> {
+    let (op, file, params) = (wide(verb), wide(path), wide(args));
     let r = unsafe {
-        ShellExecuteW(None, PCWSTR(op.as_ptr()), PCWSTR(file.as_ptr()), PCWSTR(params.as_ptr()), PCWSTR::null(), SW_SHOWNORMAL)
+        ShellExecuteW(None, PCWSTR(op.as_ptr()), PCWSTR(file.as_ptr()), PCWSTR(params.as_ptr()), PCWSTR::null(), show)
     };
     if r.0 as isize > 32 { Ok(()) } else { Err(format!("could not open {path}")) }
 }

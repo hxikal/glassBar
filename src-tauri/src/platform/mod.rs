@@ -218,6 +218,14 @@ pub trait Shell: Send + Sync {
     fn activate(&self, id: isize);
     fn close(&self, id: isize);
     fn launch(&self, path: &str, args: &str) -> Res<()>;
+    /// `launch` behind Windows' admin prompt (UAC).
+    fn launch_elevated(&self, _path: &str, _args: &str) -> Res<()> { Err("not supported".into()) }
+    /// A user environment variable as stored (unexpanded), and whether it is REG_EXPAND_SZ.
+    fn user_env(&self, _name: &str) -> Option<(String, bool)> { None }
+    /// A system environment variable as stored (unexpanded).
+    fn machine_env(&self, _name: &str) -> Option<String> { None }
+    /// Save a user environment variable and tell running programs it changed.
+    fn set_user_env(&self, _name: &str, _value: &str, _expand: bool) -> Res<()> { Err("not supported".into()) }
     /// Start a Store/packaged app by its AppUserModelID, the way the Start menu does.
     fn launch_aumid(&self, aumid: &str) -> Res<()>;
     /// AppUserModelID for a program file inside C:\\Program Files\\WindowsApps (any version).
