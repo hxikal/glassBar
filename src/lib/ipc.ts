@@ -46,6 +46,8 @@ export interface BarCfg {
   gapInner?: number | null;
   /** A copy of the dock on every other monitor too. */
   allDisplays?: boolean;
+  /** Scrolling the dock wraps around without end. */
+  infiniteScroll?: boolean;
 }
 export type SideWidth = 'slim' | 'regular' | 'wide';
 export const SIDE_PX: Record<SideWidth, number> = { slim: 56, regular: 72, wide: 96 };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hiddenCounts, reorder, snap, indexAt, revealBy } from './geometry';
+import { hiddenCounts, reorder, snap, indexAt, revealBy, wrapDir, unrotate } from './geometry';
 
 const mons = [{ x: 0, y: 0, w: 1920, h: 1080 }, { x: 1920, y: 0, w: 1920, h: 1080 }];
 
@@ -112,5 +112,28 @@ describe('revealBy', () => {
   });
   it('works down a side dock', () => {
     expect(revealBy({ left: 0, right: 60, top: 700, bottom: 900 }, { left: 0, right: 60, top: 0, bottom: 800 }, true, 10)).toBe(110);
+  });
+});
+
+describe('infinite scroll', () => {
+  it('carries an end widget round only when it is wholly out of view and evens out the sides', () => {
+    expect(wrapDir(300, 0, 100, 100)).toBe(1); // scrolled to the end: the first goes after the last
+    expect(wrapDir(0, 300, 100, 100)).toBe(-1); // at the start: the last comes before the first
+    expect(wrapDir(150, 100, 100, 100)).toBe(0); // already about mid-row
+    expect(wrapDir(90, 0, 100, 100)).toBe(0); // overflow smaller than the widget: no room to carry it
+  });
+  it('settles: carrying one round never asks to carry it straight back', () => {
+    let [before, after] = [400, 0];
+    const w = 100;
+    for (let i = 0; i < 10; i++) { const d = wrapDir(before, after, w, w); if (!d) break; before -= d * w; after += d * w; }
+    expect([before, after]).toEqual([200, 200]);
+  });
+  it('maps the row as seen back to the saved order', () => {
+    const saved = ['a', 'b', 'c', 'd'];
+    const turn = 1; // shown as b c d a
+    expect(unrotate(['b', 'c', 'd', 'a'], turn)).toEqual(saved);
+    // c dropped in front of b: the saved order keeps the seam where it was
+    expect(unrotate(['c', 'b', 'd', 'a'], turn)).toEqual(['a', 'c', 'b', 'd']);
+    expect(unrotate(saved, 0)).toBe(saved);
   });
 });

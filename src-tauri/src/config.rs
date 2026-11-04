@@ -53,6 +53,8 @@ pub struct BarCfg {
     pub gap_inner: Option<f64>,
     /// A copy of the dock on every other monitor too (`monitor` still picks the main one).
     pub all_displays: bool,
+    /// Scrolling the dock wraps around: after the last widget the first comes again.
+    pub infinite_scroll: bool,
 }
 
 impl BarCfg {
@@ -70,7 +72,7 @@ impl Default for BarCfg {
         // Fresh install: GlassBar replaces the Windows taskbar. Quit, a crash or the tray's
         // "Restore Windows taskbar" bring it back.
         Self { edge: Edge::Top, monitor: None, length: 0.7, size: BarSize::Normal, floating: None,
-               reserve_space: true, native_taskbar: TaskbarMode::Hidden, auto_hide: false, side_width: "regular".into(), gap: 6.0, gap_inner: None, all_displays: false }
+               reserve_space: true, native_taskbar: TaskbarMode::Hidden, auto_hide: false, side_width: "regular".into(), gap: 6.0, gap_inner: None, all_displays: false, infinite_scroll: false }
     }
 }
 
@@ -537,6 +539,13 @@ mod tests {
     fn performance_defaults_to_normal_manual() {
         let c: Config = serde_json::from_str(r#"{"version":11}"#).unwrap();
         assert_eq!(c.performance, Performance { mode: PerfMode::Normal, auto: false, never_touch: vec![] });
+    }
+
+    #[test]
+    fn infinite_scroll_is_off_in_old_configs() {
+        let b: BarCfg = serde_json::from_str(r#"{"edge":"bottom","autoHide":true}"#).unwrap();
+        assert!(!b.infinite_scroll);
+        assert!(serde_json::to_string(&BarCfg { infinite_scroll: true, ..b }).unwrap().contains(r#""infiniteScroll":true"#));
     }
 
     #[test]
