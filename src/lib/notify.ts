@@ -10,6 +10,7 @@ export const SOURCE_WIDGET: Record<string, { widget: string; part?: 'pomodoro' |
   downloads: { widget: 'downloads', label: 'Downloads' },
   bluetooth: { widget: 'quicksettings', label: 'Bluetooth battery' },
   countdown: { widget: 'countdown', label: 'Countdowns' },
+  gmail: { widget: 'gmail', label: 'Gmail' },
 };
 
 export type JumpTarget =

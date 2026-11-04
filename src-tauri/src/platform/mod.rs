@@ -446,6 +446,14 @@ pub trait Display: Send + Sync {
     fn watch_brightness(&self, _on_change: Box<dyn Fn(u32) + Send>) {}
 }
 
+/// Small secrets (passwords, tokens) kept by the OS for this user, never in config.json.
+pub trait Secrets: Send + Sync {
+    fn get(&self, target: &str) -> Option<String>;
+    fn set(&self, target: &str, user: &str, secret: &str) -> Res<()>;
+    /// Removing one that isn't there is not an error.
+    fn delete(&self, target: &str) -> Res<()>;
+}
+
 #[cfg(windows)]
 #[path = "windows/mod.rs"]
 mod win;
@@ -476,3 +484,5 @@ pub fn wireless() -> &'static dyn Wireless { &win::WinWireless }
 pub fn files() -> &'static dyn Files { &win::WinFiles }
 #[cfg(windows)]
 pub fn tray() -> &'static dyn Tray { &win::WinTray }
+#[cfg(windows)]
+pub fn secrets() -> &'static dyn Secrets { &win::WinSecrets }

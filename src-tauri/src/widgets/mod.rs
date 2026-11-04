@@ -8,6 +8,7 @@ pub mod currency;
 pub mod devstack;
 pub mod downloads;
 pub mod focus;
+pub mod gmail;
 pub mod holidays;
 pub mod ipu;
 pub mod jumplist;

@@ -49,6 +49,7 @@ pub fn owner_of_kv(key: &str) -> Owner {
         "lyrics" | "lyrics2" => (Group::Widget, "Lyrics"),
         "ipu" => (Group::Widget, "Air quality"),
         "fx" => (Group::Widget, "Currency"),
+        "gmail" => (Group::Widget, "Gmail"),
         "solat" => (Group::Widget, "Prayer times"),
         "weather" => (Group::Widget, "Weather"),
         "water" => (Group::Widget, "Water"),
@@ -500,7 +501,7 @@ mod tests {
         for (k, o) in [("lyrics2:adele|hello", "Lyrics"), ("ipu", "Air quality"), ("ipu:band", "Air quality"), ("fx:MYR", "Currency"),
                        ("solat:week:SGR01", "Prayer times"), ("solat:active", "Prayer times"), ("weather", "Weather"),
                        ("water:goal:123", "Water"), ("water:snooze", "Water"), ("pomodoro", "Focus timer"), ("pomo:history", "Focus timer"),
-                       ("stopwatch", "Focus timer"), ("tasbih", "Tasbih")] {
+                       ("stopwatch", "Focus timer"), ("tasbih", "Tasbih"), ("gmail:inbox:me@gmail.com", "Gmail")] {
             assert_eq!(owner_of_kv(k), (Group::Widget, o), "{k}");
         }
         assert_eq!(owner_of_kv("location").1, "Location");

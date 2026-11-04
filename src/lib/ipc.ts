@@ -154,6 +154,14 @@ export type PowerMode = 'efficiency' | 'balanced' | 'performance';
 /** otherPlan: set when the PC isn't on the Balanced plan (power modes then do nothing). */
 export interface PowerInfo { mode: PowerMode | null; saverOn: boolean | null; otherPlan: string | null }
 export interface Sample { cpu: number; mem: number; gpu: number | null; rxBps: number; txBps: number; at: number; cpuTemp: number | null }
+/** Gmail (widgets/gmail.rs). Read-only: GlassBar never marks mail read in Gmail. */
+export type MailCategory = 'primary' | 'social' | 'promotions' | 'updates' | 'forums';
+export interface Mail { uid: number; fromName: string; fromAddr: string; subject: string; snippet: string; date: number; messageId: string; important: boolean; category: MailCategory }
+export interface Inbox {
+  email: string; unread: number; important: number; categories: Partial<Record<MailCategory, number>>;
+  items: Mail[]; fetchedAt: number; cached: boolean; error: string | null;
+}
+export interface MailBody { uid: number; fromName: string; fromAddr: string; to: string; subject: string; date: number; text: string; truncated: boolean }
 export interface Rates { base: string; rates: Record<string, number>; rateTime: number; fetchedAt: number; source: string; cached: boolean }
 /** Claude plan limit window: five_hour, seven_day, or "seven_day:<model>". */
 export interface AiWindow { key: string; name: string; usedPct: number; resetsAt: number | null }
@@ -461,6 +469,16 @@ export const ipc = {
   devService: (name: string, start: boolean) => invoke<void>('devstack_service', { name, start }),
   devDocker: (action: 'desktop' | 'start' | 'stop', id = '') => invoke<void>('devstack_docker', { action, id }),
   fxRates: (base: string, force = false) => invoke<Rates>('fx_rates', { base, force }),
+  gmailSignedIn: (email: string) => invoke<boolean>('gmail_signed_in', { email }),
+  gmailSignIn: (email: string, password: string) => invoke<void>('gmail_sign_in', { email, password }),
+  gmailSignOut: (email: string) => invoke<void>('gmail_sign_out', { email }),
+  gmailInbox: (email: string, force = false) => invoke<Inbox>('gmail_inbox', { email, force }),
+  /** Text of one message; it is then hidden from the list (still unread in Gmail). */
+  gmailOpen: (email: string, uid: number) => invoke<MailBody>('gmail_open', { email, uid }),
+  gmailOpenWeb: (email: string, uid: number) => invoke<void>('gmail_open_web', { email, uid }),
+  gmailAppPasswords: () => invoke<void>('gmail_app_passwords'),
+  /** Realtime: Rust keeps a connection open per account and checks the moment mail changes. */
+  gmailWatch: (emails: string[]) => invoke<void>('gmail_watch', { emails }),
   aiLimits: (force = false) => invoke<AiLimits>('ai_limits', { force }),
   /** Claude Code tokens per local day, oldest first. */
   aiDaily: (days: number) => invoke<AiDay[]>('ai_daily', { days }),
@@ -543,6 +561,7 @@ export const events = {
   audioChanged: (cb: (s: AudioState) => void) => listen<AudioState>('audio:changed', (e) => { if (!volumeSettling()) cb(e.payload); }),
   mediaChanged: (cb: (m: MediaInfo | null) => void) => listen<MediaInfo | null>('media:changed', (e) => cb(e.payload)),
   alertsChanged: (cb: () => void) => listen('alerts:changed', () => cb()),
+  gmailChanged: (cb: (i: Inbox) => void) => listen<Inbox>('gmail:changed', (e) => cb(e.payload)),
   downloadsNew: (cb: (i: DlItem) => void) => listen<DlItem>('downloads:new', (e) => cb(e.payload)),
   bannerPush: (cb: (n: import('./notify').Note) => void) => listen<import('./notify').Note>('banner:push', (e) => cb(e.payload)),
   barJump: (cb: (j: { source: string; data: unknown; open: boolean }) => void) => own<{ source: string; data: unknown; open: boolean }>('bar:jump', cb),

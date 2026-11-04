@@ -20,6 +20,7 @@ mod location;
 mod media;
 mod radios;
 mod recent;
+mod secrets;
 mod shortcuts;
 mod snap;
 mod system;
@@ -44,6 +45,12 @@ pub struct WinLocation;
 pub struct WinPower;
 pub struct WinGpu;
 pub struct WinScreen;
+pub struct WinSecrets;
+impl Secrets for WinSecrets {
+    fn get(&self, target: &str) -> Option<String> { secrets::get(target) }
+    fn set(&self, target: &str, user: &str, secret: &str) -> Res<()> { secrets::set(target, user, secret) }
+    fn delete(&self, target: &str) -> Res<()> { secrets::delete(target) }
+}
 pub struct WinTray;
 impl Tray for WinTray {
     fn start(&self, on_change: Box<dyn Fn() + Send>) { tray::start(on_change) }
