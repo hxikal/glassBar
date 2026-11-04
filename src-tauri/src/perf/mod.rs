@@ -109,8 +109,10 @@ pub fn start(app: AppHandle) {
 #[tauri::command]
 pub fn perf_history() -> Vec<PerfSample> { HIST.lock().unwrap().iter().cloned().collect() }
 
+/// Worked out from the config on every ask: the dock asks while GlassBar is still starting,
+/// before `start`, and got the built-in Normal (it then stayed in Normal while set to Low).
 #[tauri::command]
-pub fn perf_state() -> PerfState { STATE.lock().unwrap().clone() }
+pub fn perf_state(app: AppHandle) -> PerfState { refresh(&app); STATE.lock().unwrap().clone() }
 
 /// The Performance page is open: sample every second for the next few seconds.
 #[tauri::command]

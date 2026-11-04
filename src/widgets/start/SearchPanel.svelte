@@ -10,9 +10,15 @@
   // GlassBar search: maths, units and currency answered as you type, matching apps, and
   // "Search Windows" / "Search the web" for anything else. ↑ ↓ move, Enter acts, Esc closes.
   import { ArrowRightLeft, Calculator, Check, Copy, Globe, History, Ruler, Search } from '@lucide/svelte';
-  import { profile } from '../../lib/config.svelte';
+  import { profile, updateWidgetSettings } from '../../lib/config.svelte';
+  import { showMenu } from '../../lib/menu';
   import FileIcon from '../downloads/FileIcon.svelte';
   import { iconOf } from '../folders/appIcons.svelte';
+  import { withPin } from '../apps/groups';
+  import type { Pin } from '../apps/index';
+  import folders from '../folders/index';
+  import { addApps, pinId, replace } from '../folders/folders';
+  import { settingsOf } from '../types';
   import { formatNumber, parse, type Answer } from './query';
   import { labelOf } from './units';
 
@@ -93,6 +99,34 @@
       input?.focus();
     }
   }
+  // Right-click an app: the same pin and folder changes as the dock's own menus make.
+  let shield: Promise<number[] | null> | null = null;
+  const on = (id: string) => profile().widgets.find((w) => w.id === id && w.enabled !== false);
+  async function appMenu(e: MouseEvent, app: InstalledApp) {
+    e.preventDefault();
+    e.stopPropagation();
+    const pin: Pin = { path: app.path, args: app.args || undefined, ...(app.aumid ? { aumid: app.aumid, name: app.name } : {}) };
+    const launcher = on('apps');
+    const pinned = launcher && withPin((launcher.settings as { pinned?: Pin[] } | undefined)?.pinned ?? [], app);
+    const fw = on('folders');
+    const list = fw ? settingsOf(folders, fw).folders ?? [] : [];
+    // Store apps start through their app identity, which Windows can't elevate.
+    const store = !!app.aumid;
+    await showMenu([
+      { text: 'Run as administrator', icon: (await (shield ??= ipc.shieldIcon().catch(() => null))) ?? undefined, enabled: !store,
+        action: () => { close(); ipc.appLaunchAdmin(app.path, app.args).catch(() => {}); } },
+      pinned ? { text: 'Pin to App Launcher', action: () => updateWidgetSettings(launcher!.instance, { pinned }) }
+        : { text: 'Pin to App Launcher', checked: !!launcher, enabled: false },
+      list.length
+        ? { text: 'Add to folder', items: list.map((f, i) => ({ text: f.name || `Folder ${i + 1}`, enabled: !f.apps.some((p) => pinId(p) === pinId(pin)),
+            action: () => updateWidgetSettings(fw!.instance, { folders: replace(list, addApps(f, [pin])) }) })) }
+        : { text: 'Add to folder', enabled: false },
+      '-',
+      // Settings › Installed apps, where Windows' own Start menu sends desktop apps too.
+      // (The per-app page link, ms-settings:appsfeatures-app?…, opened the same list on 26200.)
+      { text: 'Uninstall', action: () => { close(); ipc.appLaunch('ms-settings:appsfeatures').catch(() => {}); } },
+    ]);
+  }
   function key(e: KeyboardEvent) {
     if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(rows.length - 1, sel + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(0, sel - 1); }
@@ -114,7 +148,7 @@
     {#if r.kind === 'app' && (i === 0 || rows[i - 1].kind !== 'app')}<h4 class="dim">Apps</h4>{/if}
     {#if (r.kind === 'windows') && i > 0}<div class="sep"></div>{/if}
     <button id="r-{r.id}" class="row {r.kind}" class:sel={i === sel} role="option" aria-selected={i === sel}
-            onpointerenter={() => (sel = i)} onclick={() => act(r)}>
+            onpointerenter={() => (sel = i)} onclick={() => act(r)} oncontextmenu={(e) => { if (r.app) appMenu(e, r.app); }}>
       <span class="ic">
         {#if r.kind === 'app' && r.app?.aumid}
           <!-- Store apps: their registered icon (their .exe sits in a folder we can't read). -->

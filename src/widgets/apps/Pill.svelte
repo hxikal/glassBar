@@ -15,7 +15,7 @@
     return { ...s, css: (t: number, u: number) => `${s.css?.(t, u) ?? ''};opacity:${t}` };
   }
   import { insertIndex } from '../../lib/geometry';
-  import { group, isWebApp, keyFor, keyOf, limitIcons, minimizedOrder, moveKey, nextWindow, pinsInOrder, stableOrder, type Group } from './groups';
+  import { group, isWebApp, keyFor, keyOf, limitIcons, moveKey, nextWindow, pinsInOrder, stableOrder, type Group } from './groups';
   import type { AppsSettings } from './index';
   import StartButtons from '../start/StartButtons.svelte';
   import { ADD_APP, APP_DRAG } from '../folders/folders';
@@ -25,7 +25,7 @@
   import { isDockWindow } from '../../lib/dock';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   // The launcher also shows in Settings' previews: only a real dock reports where windows
-  // fly to or draws minimized windows' pictures.
+  // fly to or magnifies (a preview's magnifier would land over the Settings window).
   const onDock = isDockWindow(getCurrentWindow().label);
 
   let { instance, size, settings, vertical }: PillProps<AppsSettings> = $props();
@@ -139,20 +139,40 @@
   let frameQueued = false;
   const slotPx = $derived(iconSize + 12); // icon + the slot's side padding
   const edge = $derived(profile().bar.edge);
-  $effect(() => { if (settings.magnify) ipc.magnifyPrepare().catch(() => {}); });
+  $effect(() => { if (settings.magnify && onDock) ipc.magnifyPrepare().catch(() => {}); });
   $effect(() => { if (barAway.v) unmagnify(); });
   // Rust's watchdog saw the pointer leave without the page noticing (magnify.rs).
   onMount(() => { const off = events.magnifyReset(() => { if (magnifying) { magnifying = false; scales = {}; shifts = {}; queueTargets(); } }); return () => { off.then((f) => f()); }; });
   // An icon's centre as laid out, before any slide (offsets ignore transforms; the row is
   // the icons' offset parent).
   const baseCentre = (b: HTMLElement) => (vertical ? b.offsetTop + b.offsetHeight / 2 : b.offsetLeft + b.offsetWidth / 2);
+  // The icons can move under a still pointer, and the big copies (another window) can't keep
+  // up frame by frame: they stayed behind as doubles. While the dock scrolls the magnifier
+  // steps aside and comes back where the pointer is once it stops; a resize places it again.
+  let lastMove: PointerEvent | null = null;
+  let scrolling: ReturnType<typeof setTimeout> | undefined;
+  const remagnify = () => { if (magnifying && lastMove) magnifyMove(lastMove); };
+  const onScroll = (e: Event) => {
+    const t = e.target === document ? document.documentElement : e.target;
+    if (!(t instanceof Node) || !t.contains(row)) return; // another widget scrolling its own content
+    const was = magnifying || scrolling !== undefined;
+    unmagnify();
+    clearTimeout(scrolling);
+    scrolling = was ? setTimeout(() => { scrolling = undefined; if (lastMove && row.matches(':hover')) magnifyMove(lastMove); }, 150) : undefined;
+  };
+  onMount(() => {
+    addEventListener('scroll', onScroll, true); // any scroller in the dock (scroll doesn't bubble)
+    const ro = new ResizeObserver(remagnify);
+    ro.observe(row);
+    return () => { removeEventListener('scroll', onScroll, true); ro.disconnect(); clearTimeout(scrolling); };
+  });
   function magnifyMove(e: PointerEvent) {
-    if (!settings.magnify || edit || dragKey) return;
+    lastMove = e;
+    if (!settings.magnify || !onDock || edit || dragKey || scrolling !== undefined) return;
     const scale = settings.magnifyScale ?? 1.6;
     const btns = [...row.querySelectorAll<HTMLElement>('.app:not(.hid)')];
     if (!magnifying) {
       magnifying = true;
-      sendSpotThumbs(); // hides the spots' live pictures while magnified
       const r = row.getBoundingClientRect();
       const out = (scale - 1) * iconSize + 8;
       const side = (scale - 1) * slotPx * 3;
@@ -197,7 +217,7 @@
     magnifying = false;
     scales = {};
     shifts = {};
-    queueTargets(); // targets and the spots' live pictures come back
+    queueTargets(); // targets come back
     ipc.magnifyHide().catch(() => {});
   }
 
@@ -223,7 +243,7 @@
   // there from this dock's position). Only the first App Launcher on the dock reports. ----
   const isFirst = $derived(profile().widgets.find((w) => w.id === 'apps' && w.enabled !== false)?.instance === instance);
   const fx = $derived.by(() => {
-    const e = settings.minimizeEffect ?? 'genie';
+    const e = settings.minimizeEffect ?? 'none';
     return e !== 'none' && perf.mode === 'low' ? 'scale' : e;
   });
   const css = (r: DOMRect) => ({ x: r.left, y: r.top, w: r.width, h: r.height });
@@ -231,7 +251,6 @@
   function sendTargets() {
     targetsQueued = false;
     if (!onDock || !isFirst || !row || magnifying) return; // sent again when magnifying ends
-    const toIcon = settings.minimizeToIcon ?? true;
     const btn = new Map([...row.querySelectorAll<HTMLElement>('.app')].map((b) => [b.dataset.key!, b]));
     const more = row.querySelector<HTMLElement>('.more-apps');
     const perWindow: Record<number, ReturnType<typeof css>> = {};
@@ -239,58 +258,24 @@
       const b = btn.get(g.key);
       const r = b && visibleKeys.has(g.key) ? b.getBoundingClientRect() : more?.getBoundingClientRect();
       // An icon scrolled out of view (paged dock): leave it out, the window flies to the dock's middle.
-      if (!vertical && r && !onScreen(r, innerWidth)) continue;
-      if (!r) continue;
-      for (const w of g.windows) {
-        const spot = !toIcon && w.minimized ? row.querySelector<HTMLElement>(`.spot[data-id="${w.id}"]`) : null;
-        if (spot) perWindow[w.id] = css(spot.getBoundingClientRect());
-        else if (toIcon) perWindow[w.id] = css(r);
-      }
+      if (!r || (!vertical && !onScreen(r, innerWidth))) continue;
+      for (const w of g.windows) perWindow[w.id] = css(r);
     }
-    // Where the next minimized window's own spot will appear: just past the end of the row.
-    const rr = row.getBoundingClientRect();
-    const end = vertical ? { x: rr.left, y: rr.bottom, w: rr.width, h: slotPx } : { x: rr.right, y: rr.top, w: slotPx * 1.6, h: rr.height };
-    ipc.effectsTargets({ effect: fx, toIcon, perWindow, end, dock: { x: 0, y: 0, w: innerWidth, h: innerHeight } }).catch(() => {});
+    ipc.effectsTargets({ effect: fx, perWindow, dock: { x: 0, y: 0, w: innerWidth, h: innerHeight } }).catch(() => {});
   }
-  const queueTargets = () => { if (!targetsQueued) { targetsQueued = true; requestAnimationFrame(() => { sendTargets(); sendSpotThumbs(); }); } };
-
-  // ---- Minimized windows' own spots (when they don't go into their icon): a live picture
-  // drawn by DWM into the dock window, the app's icon beside it. ----
-  let minimized = $state<number[]>([]);
-  $effect(() => { const w = windows; minimized = untrack(() => minimizedOrder(minimized, w)); });
-  const spotsOn = $derived(!(settings.minimizeToIcon ?? true));
-  const spotWin = (id: number) => windows.find((w) => w.id === id);
-  const spotGroup = (id: number) => groups.find((g) => g.windows.some((w) => w.id === id));
-  let spotsShown = false;
-  function sendSpotThumbs() {
-    if (!onDock || !row) return;
-    // ponytail: the picture hides while magnifying instead of following every frame; follow it if it's missed.
-    const spots = spotsOn && !magnifying ? [...row.querySelectorAll<HTMLElement>('.spot .pic')] : [];
-    if (!spots.length && !spotsShown) return;
-    spotsShown = spots.length > 0;
-    ipc.barThumbs(spots.map((el) => { const r = el.getBoundingClientRect(); return { id: +el.dataset.id!, x: r.left, y: r.top, w: r.width, h: r.height }; })).catch(() => {});
-  }
-  $effect(() => { void [minimized, spotsOn]; queueTargets(); });
-  function spotMenu(e: MouseEvent, id: number) {
-    unmagnify(); // the menu swallows the pointer leaving
-    e.preventDefault();
-    e.stopPropagation();
-    showMenu([{ text: 'Close window', action: () => ipc.appClose(id) }]);
-  }
-  $effect(() => { void [groups, visibleKeys, fx, settings.minimizeToIcon, isFirst]; queueTargets(); });
+  const queueTargets = () => { if (!targetsQueued) { targetsQueued = true; requestAnimationFrame(sendTargets); } };
+  $effect(() => { void [groups, visibleKeys, fx, isFirst]; queueTargets(); });
   onMount(() => {
     const ro = new ResizeObserver(queueTargets);
     ro.observe(row);
     return () => ro.disconnect();
   });
 
-  // ---- Launch bounce: from launch until the app shows a new window (10 s at most). ----
+  // ---- Launch bounce: from launch until the app shows a new window (10 s at most), then to
+  // the end of that hop (the hop's animationiteration drops it). ----
   let bounces = $state<Bounces>({});
   const unbounce = (key: string) => { const { [key]: _, ...rest } = bounces; bounces = rest; };
-  const settle = () => {
-    const n = settleBounces(bounces, groups, Date.now());
-    if (Object.keys(n).length !== Object.keys(bounces).length) bounces = n;
-  };
+  const settle = () => { bounces = settleBounces(bounces, groups, Date.now()); };
   $effect(() => { void groups; untrack(settle); });
   $effect(() => {
     if (!Object.keys(bounces).length) return;
@@ -298,7 +283,7 @@
     return () => clearInterval(t);
   });
   const launch = (g: Group, args = g.pin?.args ?? '') => {
-    if (settings.bounce ?? true) bounces = startBounce(bounces, g.key, g.windows.map((w) => w.id), Date.now());
+    if (settings.bounce ?? false) bounces = startBounce(bounces, g.key, g.windows.map((w) => w.id), Date.now());
     return ipc.appLaunch(g.path, args, g.aumid ?? null).catch((e) => { unbounce(g.key); throw e; });
   };
 
@@ -400,6 +385,7 @@
       onclick={(e) => { e.stopPropagation(); open(g); }}
       onauxclick={(e) => { if (e.button === 1) launch(g); }}
       oncontextmenu={(e) => menu(e, g)}
+      onanimationiteration={() => { if (bounces[g.key]?.ending !== undefined) unbounce(g.key); }}
       onpointerenter={(e) => onHover(e, g)}
       onpointerleave={onUnhover}
     >
@@ -420,17 +406,6 @@
   {/each}
   {#if limited.hidden}
     <button class="more-apps" transition:reveal={{ axis: vertical ? 'y' : 'x', duration: 280, easing: cubicOut }} title="{limited.hidden} more apps" onpointerdown={(e) => e.stopPropagation()} onclick={(e) => { e.stopPropagation(); expand(); }}>+{limited.hidden}</button>
-  {/if}
-  {#if spotsOn && minimized.length}
-    <span class="sep"></span>
-    {#each minimized as id (id)}
-      {@const g = spotGroup(id)}
-      <button class="spot" data-id={id} title={spotWin(id)?.title ?? ''} transition:reveal={{ axis: vertical ? 'y' : 'x', duration: 240, easing: cubicOut }}
-              onpointerdown={(e) => e.stopPropagation()} onclick={(e) => { e.stopPropagation(); ipc.appRestoreAnimated(id); }} oncontextmenu={(e) => spotMenu(e, id)}>
-        <span class="pic" data-id={id}></span>
-        {#if g && icons[g.key]}<img class="badge" src={icons[g.key]} alt="" draggable="false" />{/if}
-      </button>
-    {/each}
   {/if}
   {#if groups.length === 0}<span class="dim">No apps</span>{/if}
   {#if settings.startPlacement === 'after'}
@@ -472,7 +447,9 @@
   /* Magnified: the big copy is in the magnifier window, the slot follows the pointer closely. */
   /* While magnified the icons follow the pointer exactly (the big copies are placed from them). */
   .app.mag { transition: background 0.2s var(--ease); }
-  .app.mag img { visibility: hidden; }
+  /* Hidden a moment after its big copy is sent: the magnifier (another window) draws it a
+     frame or two later, and hiding at once left blank slots. Shows again at once. */
+  .app.mag img { visibility: hidden; transition: visibility 0s 90ms; }
   :global(:root[data-perf='low']) .app.mag, :global(:root[data-perf='low']) .app { transition-property: background, max-width, max-height, padding, margin, opacity; }
   /* Launch bounce: hops away from the screen edge. Low mode: still, the dot blinks instead. */
   .app.bouncing { overflow: visible; }
@@ -488,12 +465,6 @@
   .app.dragging { z-index: 2; transform: scale(1.18); background: var(--pill-hover); box-shadow: 0 6px 18px rgba(0,0,0,0.25); cursor: grabbing; }
   .app.gone img, .app.gone .fallback { opacity: 0.35; filter: grayscale(1); }
   .app.failed { box-shadow: inset 0 0 0 2px #ff453a; }
-  /* A minimized window's spot: its live picture (DWM draws it over .pic), the app icon beside. */
-  .spot { position: relative; flex: none; display: flex; align-items: stretch; gap: 2px; width: calc(var(--slot) * 1.6); padding: 4px; border-radius: calc(8px * var(--rs)); }
-  .vertical .spot { width: auto; height: calc(var(--slot) * 1.2); }
-  .spot:hover { background: var(--pill-hover); }
-  .spot .pic { flex: 1; min-width: 0; border-radius: calc(4px * var(--rs)); background: var(--pill); }
-  .spot .badge { align-self: flex-end; width: 14px; height: 14px; }
   .more-apps {
     flex: none; align-self: center; min-width: 26px; height: 22px; padding: 0 6px; border-radius: var(--r-chip, 11px);
     background: var(--pill-hover); color: var(--fg); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;

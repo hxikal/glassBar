@@ -154,20 +154,30 @@ pub fn play(src: isize, run: u64, frames: Box<dyn Fn(f64) -> Vec<(Rect, Rect)> +
                 if *n == 0 { unsafe { let _ = SetWindowPos(ov, Some(HWND_TOPMOST), vs.x, vs.y, vs.w, vs.h, SWP_NOACTIVATE | SWP_SHOWWINDOW); } }
                 *n += 1;
             }
-            animate(ov, src, &frames, ms, &current, vs);
+            let thumbs = animate(ov, src, &frames, ms, &current, vs);
+            if let Some(r) = crate::effects::RUNS.lock().unwrap().as_mut() { r.end(src, run); }
+            // `then` (restore: un-minimize) runs while the last frame still shows, and the frame
+            // goes only once the window is drawn: hiding first left a blank frame between them.
+            let (tx, rx) = channel();
+            std::thread::spawn(move || { then(); let _ = tx.send(()); });
+            let _ = rx.recv_timeout(Duration::from_millis(300)); // a hung app: don't wait on it
+            unsafe { let _ = DwmFlush(); } // the restored window gets drawn
+            for t in thumbs { unsafe { let _ = DwmUnregisterThumbnail(t); } }
             let mut n = ACTIVE.lock().unwrap();
             *n -= 1;
             if *n == 0 { unsafe { let _ = ShowWindow(ov, SW_HIDE); } }
+            return;
         }
         if let Some(r) = crate::effects::RUNS.lock().unwrap().as_mut() { r.end(src, run); }
         then();
     });
 }
 
-fn animate(ov: HWND, src: isize, frames: &dyn Fn(f64) -> Vec<(Rect, Rect)>, ms: u32, current: &dyn Fn() -> bool, vs: Rect) {
+/// Plays the frames; returns the thumbnails, still showing the last one.
+fn animate(ov: HWND, src: isize, frames: &dyn Fn(f64) -> Vec<(Rect, Rect)>, ms: u32, current: &dyn Fn() -> bool, vs: Rect) -> Vec<isize> {
     let first = frames(0.0);
-    if first.is_empty() { return; }
     let mut thumbs = Vec::new();
+    if first.is_empty() { return thumbs; }
     for _ in 0..first.len() {
         match unsafe { DwmRegisterThumbnail(ov, h(src)) } { Ok(t) => thumbs.push(t), Err(_) => break }
     }
@@ -195,5 +205,5 @@ fn animate(ov: HWND, src: isize, frames: &dyn Fn(f64) -> Vec<(Rect, Rect)>, ms: 
             if unsafe { DwmFlush() }.is_err() { std::thread::sleep(Duration::from_millis(8)); }
         }
     }
-    for t in thumbs { unsafe { let _ = DwmUnregisterThumbnail(t); } }
+    thumbs
 }

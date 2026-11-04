@@ -100,25 +100,24 @@ pub fn source_rects(slices: &[Rect], size: (i32, i32), insets: (i32, i32, i32, i
 #[derive(Deserialize, Clone, Copy, Debug)]
 pub struct RectCss { pub x: f64, pub y: f64, pub w: f64, pub h: f64 }
 
-/// What the first App Launcher reports: the effect to play and where each window goes.
+/// What the first App Launcher reports: the effect to play and where each window goes (its
+/// icon; windows it doesn't list fly to the dock's middle).
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct EffectTargets { pub effect: Effect, pub to_icon: bool, pub per_window: HashMap<isize, RectCss>, pub end: Option<RectCss>, pub dock: RectCss }
+pub struct EffectTargets { pub effect: Effect, pub per_window: HashMap<isize, RectCss>, pub dock: RectCss }
 
 /// The same in screen pixels.
 #[derive(Clone, Debug)]
-pub struct Targets { pub effect: Effect, pub to_icon: bool, pub edge: Edge, pub per_window: HashMap<isize, Rect>, pub end: Option<Rect>, pub dock: Rect }
+pub struct Targets { pub effect: Effect, pub edge: Edge, pub per_window: HashMap<isize, Rect>, pub dock: Rect }
 
 pub fn to_screen(r: RectCss, origin: (i32, i32), scale: f64) -> Rect {
     let p = |v: f64| (v * scale).round() as i32;
     Rect { x: origin.0 + p(r.x), y: origin.1 + p(r.y), w: p(r.w), h: p(r.h) }
 }
 
-/// The window's own spot (its icon, or its minimized spot), else the next free spot at the
-/// end of the launcher (when windows don't go into their icon), else the dock's middle.
+/// The window's icon, else the dock's middle.
 pub fn pick_target(t: &Targets, hwnd: isize) -> Rect {
     if let Some(r) = t.per_window.get(&hwnd) { return *r; }
-    if let (false, Some(e)) = (t.to_icon, t.end) { return e; }
     let d = t.dock;
     let s = d.w.min(d.h);
     Rect { x: d.x + (d.w - s) / 2, y: d.y + (d.h - s) / 2, w: s, h: s }
@@ -133,33 +132,23 @@ impl Registry {
     pub fn end(&mut self, hwnd: isize, run: u64) { if self.current(hwnd, run) { self.runs.remove(&hwnd); } }
 }
 
-/// Per dock window (with "All displays" each dock's first launcher reports its own).
+/// Per dock window (with "All displays" each dock's first launcher reports its own). No App
+/// Launcher on any dock: no effect, Windows animates as usual.
 static TARGETS: Mutex<Option<HashMap<String, Targets>>> = Mutex::new(None);
 pub static RUNS: Mutex<Option<Registry>> = Mutex::new(None);
-const STRIPS: usize = 40;
+
+/// How many strips Genie/Suck cut a window into: one per ~4 px across it, so the bent edge
+/// stays smooth on big windows (a fixed 40 left 25 px steps on a full-height one).
+/// ponytail: each strip is a DWM thumbnail updated every frame; 160 kept 60 fps here.
+pub fn strips_for(window: Rect, edge: Edge) -> usize {
+    let across = if matches!(edge, Edge::Left | Edge::Right) { window.w } else { window.h };
+    (across / 4).clamp(40, 160) as usize
+}
 
 /// The overlay's area: the whole virtual screen, so effects running at the same time share
 /// one origin, inset by a pixel because DWM draws no thumbnails on a click-through window
 /// that covers a full monitor (checked on 26200).
 pub fn overlay_rect(screen: Rect) -> Rect { Rect { x: screen.x + 1, y: screen.y + 1, w: screen.w - 2, h: screen.h - 2 } }
-
-/// No App Launcher on any dock: windows genie into the middle of the dock.
-pub fn default_targets(dock: Rect, edge: Edge) -> Targets {
-    Targets { effect: Effect::Genie, to_icon: true, edge, per_window: HashMap::new(), end: None, dock }
-}
-
-static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
-pub fn init(app: &tauri::AppHandle) { let _ = APP.set(app.clone()); }
-
-/// The main dock's rect and edge, for `default_targets`.
-fn main_dock() -> Option<(Rect, Edge)> {
-    use tauri::Manager;
-    let app = APP.get()?;
-    let w = app.get_webview_window("bar")?;
-    let (p, s) = (w.inner_position().ok()?, w.inner_size().ok()?);
-    let edge = app.state::<crate::AppState>().config.lock().unwrap().profile().bar.edge;
-    Some((Rect { x: p.x, y: p.y, w: s.width as i32, h: s.height as i32 }, edge))
-}
 
 fn effect_now() -> Effect { TARGETS.lock().unwrap().as_ref().and_then(|m| m.values().next()).map_or(Effect::None, |t| t.effect) }
 
@@ -175,14 +164,15 @@ pub fn effects_targets(app: tauri::AppHandle, window: WebviewWindow, t: EffectTa
     let o = (pos.x, pos.y);
     let was = effect_now();
     TARGETS.lock().unwrap().get_or_insert_with(HashMap::new).insert(window.label().to_string(), Targets {
-        effect: t.effect, to_icon: t.to_icon, edge,
+        effect: t.effect, edge,
         per_window: t.per_window.into_iter().map(|(k, r)| (k, to_screen(r, o, s))).collect(),
-        end: t.end.map(|r| to_screen(r, o, s)), dock: to_screen(t.dock, o, s),
+        dock: to_screen(t.dock, o, s),
     });
     if (was == Effect::None) != (t.effect == Effect::None) { shell().suppress_native_animations(t.effect != Effect::None); }
 }
 
-/// Play effect `e` for window `hwnd` between its rect and its dock target, then run `then`.
+/// Play effect `e` for window `hwnd` between its rect and its dock target. `then` runs at the
+/// end, while the last frame still shows (restore puts the window back under it).
 fn play(hwnd: isize, window: Rect, reverse: bool, then: Box<dyn FnOnce() + Send>) {
     // The dock nearest the window (its own monitor's, with "All displays").
     let t = {
@@ -190,26 +180,25 @@ fn play(hwnd: isize, window: Rect, reverse: bool, then: Box<dyn FnOnce() + Send>
         let docks: Vec<(String, Rect)> = map.iter().flatten().map(|(l, t)| (l.clone(), t.dock)).collect();
         crate::docks::nearest_dock(&docks, window).and_then(|l| map.as_ref()?.get(l).cloned())
     };
-    let Some(t) = t.or_else(|| main_dock().map(|(d, e)| default_targets(d, e))) else { return then() };
+    let Some(t) = t else { return then() };
     if t.effect == Effect::None || window.w <= 0 || window.h <= 0 { return then(); }
     let to = pick_target(&t, hwnd);
-    let edge = t.edge;
+    let (edge, e, strips) = (t.edge, t.effect, strips_for(window, t.edge));
     let run = RUNS.lock().unwrap().get_or_insert_with(Registry::default).start(hwnd);
-    let e = t.effect;
-    shell().effect_play(hwnd, run, Box::new(move |k: f64| frame(e, window, to, edge, if reverse { 1.0 - k } else { k }, STRIPS)),
+    shell().effect_play(hwnd, run, Box::new(move |k: f64| frame(e, window, to, edge, if reverse { 1.0 - k } else { k }, strips)),
                         duration_ms(e), then);
 }
 
 /// A window began to minimize (from the window hook).
 pub fn on_minimize(hwnd: isize, rect: Rect) { play(hwnd, rect, false, Box::new(|| {})); }
 
-/// The dock restores a minimized window: fly it out of its target first, then restore it.
+/// The dock restores a minimized window: fly it out of its target, then restore it.
 #[tauri::command]
 pub async fn app_restore_animated(id: isize) {
     let Some(r) = shell().restore_rect(id) else { return shell().activate(id) };
     let (tx, rx) = std::sync::mpsc::channel();
-    play(id, r, true, Box::new(move || { let _ = tx.send(()); }));
-    let _ = tauri::async_runtime::spawn_blocking(move || { let _ = rx.recv_timeout(std::time::Duration::from_secs(2)); shell().activate(id); }).await;
+    play(id, r, true, Box::new(move || { shell().activate(id); let _ = tx.send(()); }));
+    let _ = tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(3))).await;
 }
 
 #[cfg(test)]
@@ -228,12 +217,11 @@ mod tests {
     }
 
     #[test]
-    fn without_an_app_launcher_windows_genie_into_the_dock_middle() {
-        let dock = Rect { x: 0, y: 1000, w: 1000, h: 60 };
-        let t = default_targets(dock, Edge::Bottom);
-        assert_eq!(t.effect, Effect::Genie);
-        let mid = pick_target(&t, 42);
-        assert_eq!((mid.x + mid.w / 2, mid.y + mid.h / 2), (500, 1030));
+    fn big_windows_get_thinner_strips() {
+        assert_eq!(strips_for(Rect { x: 0, y: 0, w: 300, h: 100 }, Edge::Bottom), 40);
+        assert_eq!(strips_for(Rect { x: 0, y: 0, w: 300, h: 400 }, Edge::Top), 100);
+        assert_eq!(strips_for(Rect { x: 0, y: 0, w: 1920, h: 1040 }, Edge::Bottom), 160);
+        assert_eq!(strips_for(Rect { x: 0, y: 0, w: 400, h: 1000 }, Edge::Left), 100); // cut across its width
     }
 
     fn bbox(v: &[(Rect, Rect)]) -> Rect {
@@ -292,23 +280,16 @@ mod tests {
         }
     }
 
-    fn targets(to_icon: bool) -> Targets {
+    fn targets() -> Targets {
         let mut per_window = std::collections::HashMap::new();
         per_window.insert(7, Rect { x: 100, y: 1000, w: 40, h: 40 });
-        Targets { effect: Effect::Genie, to_icon, edge: Edge::Bottom, per_window, end: Some(Rect { x: 800, y: 1000, w: 60, h: 40 }),
-                  dock: Rect { x: 0, y: 990, w: 1000, h: 60 } }
+        Targets { effect: Effect::Genie, edge: Edge::Bottom, per_window, dock: Rect { x: 0, y: 990, w: 1000, h: 60 } }
     }
 
     #[test]
-    fn a_window_flies_to_its_own_target_first() {
-        assert_eq!(pick_target(&targets(true), 7), Rect { x: 100, y: 1000, w: 40, h: 40 });
-        assert_eq!(pick_target(&targets(false), 7), Rect { x: 100, y: 1000, w: 40, h: 40 });
-    }
-
-    #[test]
-    fn without_its_own_target_it_goes_to_the_end_spot_or_the_dock_middle() {
-        assert_eq!(pick_target(&targets(false), 9), Rect { x: 800, y: 1000, w: 60, h: 40 });
-        let mid = pick_target(&targets(true), 9);
+    fn a_window_flies_to_its_icon_else_the_dock_middle() {
+        assert_eq!(pick_target(&targets(), 7), Rect { x: 100, y: 1000, w: 40, h: 40 });
+        let mid = pick_target(&targets(), 9);
         assert_eq!((mid.x + mid.w / 2, mid.y + mid.h / 2), (500, 1020));
         assert!(mid.w > 0 && mid.w <= 60);
     }

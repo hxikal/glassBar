@@ -41,7 +41,6 @@ pub fn start_watchers(app: &AppHandle) {
     let p = crate::platform::shell();
     let a = app.clone();
     p.watch_windows(Box::new(move || { let _ = a.emit("apps:changed", crate::platform::shell().list_windows()); }));
-    crate::effects::init(app);
     mic::start(app);
     p.watch_minimize(Box::new(crate::effects::on_minimize));
     let a = app.clone();

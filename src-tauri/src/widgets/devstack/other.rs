@@ -53,7 +53,7 @@ pub fn services() -> Vec<WinService> {
 /// `sc start|stop` behind the admin prompt. Only for a service we list.
 pub fn service(name: &str, start: bool) -> Result<(), String> {
     if !services().iter().any(|s| s.name == name) { return Err("unknown service".into()); }
-    crate::platform::shell().launch_elevated("sc.exe", &format!("{} \"{name}\"", if start { "start" } else { "stop" }))
+    crate::platform::shell().launch_elevated("sc.exe", &format!("{} \"{name}\"", if start { "start" } else { "stop" }), false)
 }
 
 fn docker_exe() -> Option<PathBuf> {
