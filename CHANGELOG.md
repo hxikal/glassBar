@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.15 — 2026-11-04
+
+### New
+- **Infinite scroll** in Settings › Bar › Behaviour (off by default). When the widgets don't all fit, scrolling the dock goes round and round: after the last widget the first comes again, and before the first the last, with the mouse wheel or the touchpad, on any edge. The "‹ N" / "N ›" chips and the faded ends are not shown then. Moving widgets, edit mode and opening panels work as before. The saved widget order doesn't change.
+- **Right-click an app in GlassBar search** for Run as administrator, Pin to App Launcher, Add to folder and Uninstall. Uninstall opens Settings › Installed apps.
+
+### Changed
+- **App Launcher dock effects are off for new installs** (Magnification, the minimize effect, Animate opening applications). Docks set up before keep what they had.
+- **"Minimize windows into application icon" was removed.** Minimized windows always go into their app's icon.
+
+### Fixed
+- **Magnification no longer leaves ghost icons or blank slots.** Several magnifier windows could open at once, and one kept showing old icons; icons also vanished for a moment as magnification began.
+- **Liquid Glass no longer shows a faded copy of the dock behind the dock.** Its picture of what is behind could catch the dock itself when Windows was busy (or right at start); such a picture is now noticed and retaken.
+- **Magnified icons no longer stay behind when the dock scrolls** under the pointer; they step aside while it moves.
+- **Restoring a window from the dock no longer blinks** between the end of the effect and the window appearing.
+- **Genie and Suck have a smooth edge on big windows** (they were cut into too few strips, which showed as steps).
+- **Windows no longer animate twice** when no App Launcher is on the dock.
+- **An opening app's icon finishes its bounce** instead of snapping back when the app appears.
+- **The dock follows Performance mode Low again.** If the mode changed while GlassBar was starting, the dock stayed in Normal.
+- **The card after a screenshot no longer looks doubled.** With Performance set to Low it could flip between two sizes every frame until it closed, which showed as a ghosted copy of the card. Any panel whose height depends on its width (text, pictures) could do the same.
+
 ## 0.6.14 — 2026-11-03
 
 ### New
