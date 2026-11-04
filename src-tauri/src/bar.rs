@@ -811,18 +811,6 @@ pub fn thumbs_clear(app: AppHandle) {
     if let Some(h) = app.get_webview_window("popup").and_then(|p| p.hwnd().ok()) { shell().thumbs_clear(h.0 as isize); }
 }
 
-/// Live pictures of minimized windows drawn into the calling dock (its own CSS px); an empty
-/// list clears them.
-#[tauri::command]
-pub fn bar_thumbs(window: WebviewWindow, items: Vec<ThumbArea>) -> Vec<isize> {
-    if !crate::docks::is_dock(window.label()) { return vec![]; }
-    let (Ok(h), Ok(s)) = (window.hwnd(), window.scale_factor()) else { return vec![] };
-    let px = |v: f64| (v * s).round() as i32;
-    let items: Vec<(isize, Rect)> = items.iter().map(|a| (a.id, Rect { x: px(a.x), y: px(a.y), w: px(a.w), h: px(a.h) })).collect();
-    if items.is_empty() { shell().thumbs_clear(h.0 as isize); return vec![]; }
-    shell().thumbs_show(h.0 as isize, &items)
-}
-
 /// The pointer left the widget that opened a hover popup; the popup closes soon
 /// unless the pointer moves into it.
 #[tauri::command]

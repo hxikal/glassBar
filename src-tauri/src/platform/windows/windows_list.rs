@@ -172,9 +172,23 @@ pub fn close(id: isize) {
 
 pub fn launch(path: &str, args: &str) -> Res<()> { shell_exec("open", path, args, SW_SHOWNORMAL) }
 
-/// Like `launch`, but Windows asks for admin first (the UAC prompt), and no window shows
-/// (it runs commands such as `sc stop`).
-pub fn launch_elevated(path: &str, args: &str) -> Res<()> { shell_exec("runas", path, args, SW_HIDE) }
+/// Like `launch`, but Windows asks for admin first (the UAC prompt). Not `visible`: no window
+/// shows (it runs commands such as `sc stop`).
+pub fn launch_elevated(path: &str, args: &str, visible: bool) -> Res<()> {
+    shell_exec("runas", path, args, if visible { SW_SHOWNORMAL } else { SW_HIDE })
+}
+
+/// The small UAC shield, as PNG.
+pub fn shield_png() -> Option<Vec<u8>> {
+    use windows::Win32::UI::Shell::{SHGetStockIconInfo, SHGSI_ICON, SHGSI_SMALLICON, SHSTOCKICONINFO, SIID_SHIELD};
+    unsafe {
+        let mut info = SHSTOCKICONINFO { cbSize: std::mem::size_of::<SHSTOCKICONINFO>() as u32, ..Default::default() };
+        SHGetStockIconInfo(SIID_SHIELD, SHGSI_ICON | SHGSI_SMALLICON, &mut info).ok()?;
+        let png = icon_to_png(info.hIcon);
+        let _ = DestroyIcon(info.hIcon);
+        png
+    }
+}
 
 fn shell_exec(verb: &str, path: &str, args: &str, show: SHOW_WINDOW_CMD) -> Res<()> {
     let (op, file, params) = (wide(verb), wide(path), wide(args));

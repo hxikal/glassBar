@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { group, keyFor, limitIcons, minimizedOrder, nextWindow, nameOf } from './groups';
+import { group, keyFor, limitIcons, nextWindow, nameOf, withPin } from './groups';
 
 const win = (id: number, exe: string, active = false) => ({ id, title: `w${id}`, exe, active, minimized: false });
 
@@ -100,19 +100,14 @@ describe('limitIcons', () => {
   });
 });
 
-describe('minimizedOrder', () => {
-  const min = (id: number, minimized = true) => ({ ...win(id, 'a.exe'), minimized });
-  it('lists minimized windows in the order they were minimized', () => {
-    expect(minimizedOrder([1, 2], [min(2), min(1), min(3)])).toEqual([1, 2, 3]);
-  });
-  it('drops a window once it is restored', () => {
-    expect(minimizedOrder([1, 2, 3], [min(1), min(2, false), min(3)])).toEqual([1, 3]);
-  });
-  it('drops a window once it is closed', () => {
-    expect(minimizedOrder([1], [])).toEqual([]);
-  });
-  it('never lists windows that are not minimized', () => {
-    expect(minimizedOrder([], [min(4, false)])).toEqual([]);
+describe('withPin', () => {
+  it('adds an app once, matching Store apps by app ID', () => {
+    const one = withPin([], { path: 'C:/A/a.exe', args: '' })!;
+    expect(one).toEqual([{ path: 'C:/A/a.exe', args: undefined }]);
+    expect(withPin(one, { path: 'c:/a/A.EXE' })).toBeNull(); // same program, any case
+    const store = withPin(one, { path: 'C:/Apps/x.exe', aumid: 'X_p!App', name: 'X' })!;
+    expect(store[1]).toEqual({ path: 'C:/Apps/x.exe', args: undefined, aumid: 'X_p!App', name: 'X' });
+    expect(withPin(store, { path: 'C:/other.exe', aumid: 'X_p!App' })).toBeNull(); // same app ID
   });
 });
 

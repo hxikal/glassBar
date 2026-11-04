@@ -218,8 +218,11 @@ pub trait Shell: Send + Sync {
     fn activate(&self, id: isize);
     fn close(&self, id: isize);
     fn launch(&self, path: &str, args: &str) -> Res<()>;
-    /// `launch` behind Windows' admin prompt (UAC).
-    fn launch_elevated(&self, _path: &str, _args: &str) -> Res<()> { Err("not supported".into()) }
+    /// `launch` behind Windows' admin prompt (UAC); `visible` = show its window ("Run as
+    /// administrator"), else it runs hidden (commands such as `sc stop`).
+    fn launch_elevated(&self, _path: &str, _args: &str, _visible: bool) -> Res<()> { Err("not supported".into()) }
+    /// Windows' UAC shield (small), as PNG, for "Run as administrator".
+    fn shield_icon(&self) -> Option<Vec<u8>> { None }
     /// A user environment variable as stored (unexpanded), and whether it is REG_EXPAND_SZ.
     fn user_env(&self, _name: &str) -> Option<(String, bool)> { None }
     /// A system environment variable as stored (unexpanded).

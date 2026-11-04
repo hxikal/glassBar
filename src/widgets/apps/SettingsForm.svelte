@@ -2,7 +2,8 @@
   import { ArrowDown, ArrowUp, FolderOpen, X } from '@lucide/svelte';
   import type { SettingsProps } from '../types';
   import type { AppsSettings, Pin } from './index';
-  import { keyOf, nameOf } from './groups';
+  import { keyOf, nameOf, withPin } from './groups';
+  import { perf } from '../../lib/perf.svelte';
   import OptionsPopover from '../../lib/OptionsPopover.svelte';
   import { ipc, type InstalledApp, type PinTarget } from '../../lib/ipc';
 
@@ -17,10 +18,9 @@
   const isPinned = (a: InstalledApp) => pinnedKeys.has(keyOf(a.path)) || (!!a.aumid && pinnedIds.has(a.aumid));
 
   function pin(t: PinTarget & { aumid?: string | null; name?: string }) {
-    error = '';
-    if (pinnedKeys.has(keyOf(t.path)) || (!!t.aumid && pinnedIds.has(t.aumid))) { error = `${t.name ?? nameOf(t.path)} is already pinned.`; return; }
-    // Store apps keep their name: their .exe can be a launcher (Spotify: SpotifyMigrator.exe).
-    save({ pinned: [...settings.pinned, { path: t.path, args: t.args || undefined, ...(t.aumid ? { aumid: t.aumid, name: t.name } : {}) }] });
+    const pinned = withPin(settings.pinned, t);
+    error = pinned ? '' : `${t.name ?? nameOf(t.path)} is already pinned.`;
+    if (pinned) save({ pinned });
   }
   async function addTyped() {
     const p = path.trim().replace(/^"|"$/g, '');
@@ -68,13 +68,12 @@
   </label>
 {/if}
 <label>Minimize windows using
-  <select value={settings.minimizeEffect ?? 'genie'} onchange={(e) => save({ minimizeEffect: e.currentTarget.value as AppsSettings['minimizeEffect'] })}>
+  <select value={settings.minimizeEffect ?? 'none'} onchange={(e) => save({ minimizeEffect: e.currentTarget.value as AppsSettings['minimizeEffect'] })}>
     <option value="genie">Genie</option><option value="scale">Scale</option><option value="suck">Suck</option><option value="none">Off</option>
   </select>
 </label>
-<label><input type="checkbox" checked={settings.bounce ?? true} onchange={(e) => save({ bounce: e.currentTarget.checked })} /> Animate opening applications</label>
-<label><input type="checkbox" checked={settings.minimizeToIcon ?? true} onchange={(e) => save({ minimizeToIcon: e.currentTarget.checked })} /> Minimize windows into application icon</label>
-<p class="dim small">Off: a minimized window gets its own spot, with a live picture, at the end of the launcher. In Low performance mode the effect is always Scale and icons don't bounce.</p>
+<label><input type="checkbox" checked={settings.bounce ?? false} onchange={(e) => save({ bounce: e.currentTarget.checked })} /> Animate opening applications</label>
+{#if perf.mode === 'low'}<p class="dim small">Low performance mode is on: minimizing always uses Scale, the magnified icons don't glide, and an opening app's dot blinks instead of its icon bouncing.</p>{/if}
 
 <p class="dim">Pinned apps stay on the bar even when closed. Drag icons on the bar to reorder them, or right-click an icon to pin/unpin.</p>
 <ul>

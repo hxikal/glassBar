@@ -77,10 +77,9 @@ export function limitIcons<T>(items: T[], max: number, isActive: (t: T) => boole
   return { shown, hidden: items.length - max };
 }
 
-/** Minimized windows in the order they were minimized (each gets its own spot at the end of
- *  the launcher when windows don't go into their icon). */
-export function minimizedOrder(prev: number[], windows: AppWindow[]): number[] {
-  const now = new Set(windows.filter((w) => w.minimized).map((w) => w.id));
-  const kept = prev.filter((id) => now.has(id));
-  return [...kept, ...[...now].filter((id) => !kept.includes(id))];
+/** `pinned` with app `t` added at the end, or null when it is already pinned. Store apps keep
+ *  their name: their .exe can be a launcher (Spotify: SpotifyMigrator.exe). */
+export function withPin(pinned: Pin[], t: { path: string; args?: string; aumid?: string | null; name?: string }): Pin[] | null {
+  if (pinned.some((p) => keyOf(p.path) === keyOf(t.path) || (!!t.aumid && p.aumid === t.aumid))) return null;
+  return [...pinned, { path: t.path, args: t.args || undefined, ...(t.aumid ? { aumid: t.aumid, name: t.name } : {}) }];
 }

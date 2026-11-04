@@ -13,7 +13,12 @@ const LABEL: &str = "magnify";
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MagIcon { pub src: String, pub x: f64, pub y: f64, pub size: f64 }
 
+/// Held while the magnifier is looked up or built: calls racing in (each App Launcher, a
+/// settings change) each built their own window, and the extra ones kept showing stale icons.
+static BUILD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn window(app: &AppHandle) -> Option<WebviewWindow> {
+    let _one = BUILD.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(w) = app.get_webview_window(LABEL) { return Some(w); }
     let w = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
         .title("GlassBar magnifier")
