@@ -1,8 +1,8 @@
 <script lang="ts">
-  // Smart inbox: a summary card (new / important / promotions) with a tab per account, Gmail's
-  // categories as chips, important mail first as cards, the rest as compact rows. Click one to
+  // Smart inbox: an account switcher in the title (like Gmail on a phone), a summary card
+  // (new / important / promotions), Gmail's categories as chips, important mail first as cards, the rest as compact rows. Click one to
   // read it here (text only); it then leaves the list but stays unread in Gmail.
-  import { ArrowLeft, ExternalLink, Plus, RefreshCw, Star } from '@lucide/svelte';
+  import { ArrowLeft, Check, ChevronDown, ExternalLink, Plus, RefreshCw, Star } from '@lucide/svelte';
   import PanelHeader from '../../lib/PanelHeader.svelte';
   import { ipc, type MailBody, type MailCategory } from '../../lib/ipc';
   import { relTime } from '../../lib/time';
@@ -41,6 +41,15 @@
   const first = $derived(accounts.length && box.by[accounts[0].email]?.signedIn == null);
 
   const unreadOf = (email: string) => box.by[email]?.i?.unread ?? 0;
+  const allUnread = $derived(accounts.reduce((n, a) => n + unreadOf(a.email), 0));
+  const current = $derived(accounts.find((a) => a.email === tab) ?? null);
+
+  // The account switcher's menu.
+  let menu = $state(false);
+  let switcher = $state<HTMLElement>();
+  const choose = (v: string) => { tab = v; menu = false; };
+  const onDoc = (e: MouseEvent) => { if (menu && switcher && !switcher.contains(e.target as Node)) menu = false; };
+  const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && menu) { menu = false; e.stopPropagation(); } };
   const read = async (m: Tagged) => {
     open = { m, b: null, error: '' };
     try { const b = await ipc.gmailOpen(m.account, m.uid); if (open?.m === m) open.b = b; }
@@ -54,6 +63,12 @@
   };
   const fullDate = (at: number) => at ? new Date(at).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
 </script>
+
+<svelte:window onclick={onDoc} onkeydown={onKey} />
+
+{#snippet acct(i: number, px: number)}
+  <i class="aav" style:background={colorOf(i)} style:width="{px}px" style:height="{px}px" style:font-size="{Math.round(px * 0.45)}px">{initial(nameOf(accounts[i]))}</i>
+{/snippet}
 
 {#snippet avatar(m: Tagged, px: number)}
   <span class="av" style:--h={hueOf(m.fromAddr || m.fromName)} style:width="{px}px" style:height="{px}px" style:font-size="{Math.round(px * 0.4)}px">
@@ -93,26 +108,50 @@
 
 {:else}
   <!-- The smart inbox -->
-  <PanelHeader title="Gmail">
-    <button class="icon-btn" onclick={() => (adding = { email: '' })} aria-label="Add account" title="Add account"><Plus size={16} /></button>
-    <button class="icon-btn" class:spin={box.loading()} onclick={() => box.refresh()} aria-label="Check now" title="Check now"><RefreshCw size={15} /></button>
-  </PanelHeader>
+  <header class="ph">
+    <div class="sw-wrap" bind:this={switcher}>
+      <button class="sw" onclick={() => (menu = !menu)} aria-haspopup="menu" aria-expanded={menu} title={current ? current.email : 'All accounts'}>
+        <span class="stk">
+          {#if current}{@render acct(accounts.indexOf(current), 22)}
+          {:else}{#each accounts.slice(0, 3) as _, i (i)}{@render acct(i, 22)}{/each}{/if}
+        </span>
+        <span class="ellipsis">{current ? nameOf(current) : accounts.length > 1 ? 'All accounts' : 'Gmail'}</span>
+        <ChevronDown size={14} class="chev" />
+      </button>
+      {#if menu}
+        <div class="menu" role="menu">
+          {#if accounts.length > 1}
+            <button role="menuitemradio" aria-checked={tab === 'all'} class:on={tab === 'all'} onclick={() => choose('all')}>
+              <span class="ck">{#if tab === 'all'}<Check size={13} />{/if}</span>
+              <span class="mt"><span>All accounts</span></span><span class="mc">{allUnread}</span>
+            </button>
+            <div class="sep"></div>
+          {/if}
+          {#each accounts as a, i (a.email)}
+            <button role="menuitemradio" aria-checked={tab === a.email} class:on={tab === a.email} onclick={() => choose(a.email)}>
+              <span class="ck">{#if tab === a.email}<Check size={13} />{/if}</span>
+              {@render acct(i, 24)}
+              <span class="mt"><span class="ellipsis">{nameOf(a)}</span><small class="ellipsis">{a.email}</small></span>
+              <span class="mc">{unreadOf(a.email)}</span>
+            </button>
+          {/each}
+          <div class="sep"></div>
+          <button role="menuitem" class="add" onclick={() => { menu = false; adding = { email: '' }; }}>
+            <span class="ck"><Plus size={14} /></span><span class="mt"><span>Add account</span></span>
+          </button>
+        </div>
+      {/if}
+    </div>
+    <div class="acts">
+      <button class="icon-btn" onclick={() => (adding = { email: '' })} aria-label="Add account" title="Add account"><Plus size={16} /></button>
+      <button class="icon-btn" class:spin={box.loading()} onclick={() => box.refresh()} aria-label="Check now" title="Check now"><RefreshCw size={15} /></button>
+    </div>
+  </header>
 
   <section class="hero" class:quiet={!t.unread}>
     <div class="n">{t.unread}</div>
     <div class="s">{summaryLine(t)}</div>
-    {#if accounts.length > 1}
-      <div class="accs" role="tablist">
-        <button role="tab" aria-selected={tab === 'all'} class:on={tab === 'all'} onclick={() => (tab = 'all')}>All</button>
-        {#each accounts as a, i (a.email)}
-          <button role="tab" aria-selected={tab === a.email} class:on={tab === a.email} onclick={() => (tab = a.email)} title={a.email}>
-            <span class="acc-dot" style:background={colorOf(i)}></span>{nameOf(a)} · {unreadOf(a.email)}
-          </button>
-        {/each}
-      </div>
-    {:else}
-      <div class="who">{accounts[0].email}</div>
-    {/if}
+    {#if current || accounts.length === 1}<div class="who">{(current ?? accounts[0]).email}</div>{/if}
   </section>
 
   {#each problems as p (p.a.email)}
@@ -180,14 +219,38 @@
   .n { font-size: 32px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
   .s { font-size: 12px; opacity: 0.92; margin-top: 4px; }
   .who { font-size: 11px; opacity: 0.8; margin-top: 8px; }
-  .accs { position: relative; z-index: 1; display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-  .accs button { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 3px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.2); color: inherit; font-variant-numeric: tabular-nums; }
-  .accs button:hover { background: rgba(255, 255, 255, 0.3); }
-  .accs button.on { background: #fff; color: #1c1f2a; font-weight: 600; }
-  .hero.quiet .accs button { background: var(--pill); }
-  .hero.quiet .accs button.on { background: var(--accent); color: var(--on-accent); }
   .acc-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: middle; margin-right: 3px; }
-  .accs .acc-dot { margin: 0; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7); }
+
+  /* Header with the account switcher (same box as PanelHeader). */
+  .ph { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); min-height: 32px; margin-bottom: var(--s-2); }
+  .acts { display: flex; align-items: center; gap: var(--s-1); flex: none; }
+  .sw-wrap { position: relative; min-width: 0; }
+  .sw { display: inline-flex; align-items: center; gap: 7px; max-width: 250px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--bg-2); font-size: 14px; font-weight: 600; transition: background 0.15s var(--ease); }
+  .sw:hover, .sw[aria-expanded='true'] { background: var(--pill-hover); }
+  .sw:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .sw :global(.chev) { flex: none; color: var(--fg-dim); transition: transform 0.2s var(--ease); }
+  .sw[aria-expanded='true'] :global(.chev) { transform: rotate(180deg); }
+  .stk { display: inline-flex; flex: none; }
+  .stk > :global(.aav:not(:first-child)) { margin-left: -7px; }
+  .aav { flex: none; display: grid; place-items: center; border-radius: 50%; color: #fff; font-style: normal; font-weight: 600; box-shadow: 0 0 0 2px var(--bg-1, #f2f4fa); }
+
+  .menu {
+    position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; width: 290px; padding: 6px;
+    border-radius: var(--r-outer, 16px); background: rgba(250, 250, 252, 0.97); color: #1c1f2a; border: 1px solid var(--line-soft);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28); backdrop-filter: blur(30px);
+    animation: drop 0.16s var(--ease);
+  }
+  :global([data-theme='dark']) .menu { background: rgba(38, 38, 44, 0.97); color: #f2f2f7; }
+  @keyframes drop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+  .menu button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border-radius: var(--r-inner); text-align: left; font-size: 13px; }
+  .menu button:hover, .menu button:focus-visible { background: var(--pill-hover); outline: none; }
+  .menu button.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .ck { flex: none; width: 16px; display: grid; place-items: center; color: var(--accent); }
+  .mt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .mt small { font-size: 11px; color: var(--fg-3); }
+  .mc { flex: none; font-size: 12px; font-weight: 600; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
+  .menu .add { color: var(--accent); font-weight: 500; }
+  .sep { height: 1px; margin: 4px 8px; background: var(--line-soft); }
 
   .warn { display: flex; align-items: center; gap: var(--s-2); justify-content: space-between; font-size: 12px; padding: 6px 10px; margin-bottom: var(--s-2); border-radius: var(--r-inner); background: color-mix(in srgb, #ff9f0a 16%, transparent); }
   .warn button { flex: none; font-size: 12px; font-weight: 600; color: var(--accent); }
