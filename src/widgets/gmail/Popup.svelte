@@ -1,16 +1,16 @@
 <script lang="ts">
   // Smart inbox: an account switcher in the title (like Gmail on a phone), a summary card
   // (new / important / promotions), Gmail's categories as chips, important mail first as cards, the rest as compact rows. Click one to
-  // read it here (text only); it then leaves the list but stays unread in Gmail.
-  import { ArrowLeft, Check, ChevronDown, ExternalLink, Plus, RefreshCw, Star } from '@lucide/svelte';
+  // read it here; it then stays listed, greyed, and stays unread in Gmail.
+  import { ArrowLeft, Check, ChevronDown, ExternalLink, Image, Plus, RefreshCw, Star, Trash2 } from '@lucide/svelte';
   import PanelHeader from '../../lib/PanelHeader.svelte';
-  import { ipc, type MailBody, type MailCategory } from '../../lib/ipc';
+  import { ipc, type MailBody } from '../../lib/ipc';
   import { relTime } from '../../lib/time';
   import { updateWidgetSettings } from '../../lib/config.svelte';
   import type { PopupProps } from '../types';
   import type { GmailSettings } from './index';
   import { liveInboxes } from './inbox.svelte';
-  import { accountsOf, chipsFor, colorOf, nameOf, pick, summaryLine, totals, type Tagged } from './accounts';
+  import { accountsOf, chipsFor, colorOf, nameOf, pick, summaryLine, totals, type Tab, type Tagged } from './accounts';
   import { hueOf, initial, mailTime } from './format';
   import SignIn from './SignIn.svelte';
 
@@ -19,7 +19,7 @@
   const box = liveInboxes(() => accounts.map((a) => a.email), () => settings.every);
 
   let tab = $state<string>('all');
-  let cat = $state<MailCategory>('primary');
+  let cat = $state<Tab>('all');
   let adding = $state<{ email: string } | null>(null);
   let open = $state<{ m: Tagged; b: MailBody | null; error: string } | null>(null);
 
@@ -47,13 +47,57 @@
   // The account switcher's menu.
   let menu = $state(false);
   let switcher = $state<HTMLElement>();
-  const choose = (v: string) => { tab = v; menu = false; };
+  const choose = (v: string) => { tab = v; menu = false; removing = false; };
+  // Remove the shown account: signs out (its App Password leaves Credential Manager) and drops
+  // its cached mail. Two clicks, so a slip of the mouse doesn't do it.
+  let removing = $state(false);
+  const remove = async (email: string) => {
+    if (!removing) { removing = true; return; }
+    removing = false; menu = false;
+    await ipc.gmailSignOut(email).catch(() => {});
+    updateWidgetSettings(instance, { accounts: accounts.filter((a) => a.email !== email), email: '' });
+    tab = 'all';
+  };
   const onDoc = (e: MouseEvent) => { if (menu && switcher && !switcher.contains(e.target as Node)) menu = false; };
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && menu) { menu = false; e.stopPropagation(); } };
   const read = async (m: Tagged) => {
     open = { m, b: null, error: '' };
-    try { const b = await ipc.gmailOpen(m.account, m.uid); if (open?.m === m) open.b = b; }
-    catch (e) { if (open?.m === m) open.error = String(e); }
+    images = false;
+    // Still this email? Compared by id: `open.m` is Svelte's proxy of `m`, never `=== m`.
+    const still = () => open?.m.uid === m.uid && open?.m.account === m.account;
+    try {
+      const b = await ipc.gmailOpen(m.account, m.uid);
+      if (still()) open!.b = b;
+      // Cut off at 1 MB (pictures sent inside it): read the whole one, then show that.
+      if (b.truncated) { const all = await ipc.gmailOpen(m.account, m.uid, true); if (still()) open!.b = all; }
+    } catch (e) { if (still() && !open!.b) open!.error = String(e); }
+  };
+  /** Remote pictures: off until asked (each one tells the sender the email was opened). */
+  let images = $state(false);
+  const page = (html: string, imgs: boolean) =>
+    `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data: ${imgs ? 'https: http:' : ''}">` +
+    `<style>html,body{margin:0;background:#fff;color:#202124}body{padding:14px;font:13px/1.5 system-ui,'Segoe UI',sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%!important}a{color:#1a73e8}</style>${html}`;
+  /** Fit the frame to its content up to the reading area's height (longer ones scroll inside,
+   *  like the plain text), and send link clicks to the browser instead of loading them inside. */
+  const fit = (f: HTMLIFrameElement) => {
+    let ro: ResizeObserver | undefined;
+    const ready = () => {
+      const d = f.contentDocument;
+      if (!d) return;
+      const size = () => { f.style.height = `${Math.min(d.documentElement.scrollHeight, 330)}px`; };
+      size();
+      ro?.disconnect();
+      ro = new ResizeObserver(size);
+      ro.observe(d.documentElement);
+      d.addEventListener('click', (e) => {
+        const a = (e.target as Element).closest?.('a[href]') as HTMLAnchorElement | null;
+        if (!a) return;
+        e.preventDefault();
+        ipc.gmailOpenLink(a.href).catch(() => {});
+      });
+    };
+    f.addEventListener('load', ready);
+    return { destroy: () => { f.removeEventListener('load', ready); ro?.disconnect(); } };
   };
   const web = (m: Tagged) => ipc.gmailOpenWeb(m.account, m.uid).catch(() => {});
   const added = (email: string) => {
@@ -92,9 +136,20 @@
     {#if open.error}
       <p class="err">{open.error}</p>
     {:else if !open.b}
-      <div class="text skeleton"><i></i><i></i><i></i><i style="width:60%"></i></div>
+      <!-- The preview is already here: show it while the rest comes. -->
+      {#if open.m.snippet}<div class="text loading">{open.m.snippet}</div>{/if}
+      <div class="text skeleton"><i></i><i style="width:60%"></i></div>
     {:else}
-      <div class="text">{open.b.text || '(This email has no text.)'}</div>
+      {#if open.b.html}
+        <!-- The email's own layout. sandbox without allow-scripts: nothing in it runs; its CSP
+             blocks remote pictures (trackers) until "Show images". Links open in the browser. -->
+        <iframe class="html" title="Email" sandbox="allow-same-origin" srcdoc={page(open.b.html, images)} use:fit></iframe>
+        {#if !images && /<img[^>]+src=["']?https?:/i.test(open.b.html)}
+          <button class="ghost-btn" onclick={() => (images = true)}><Image size={13} /> Show images</button>
+        {/if}
+      {:else}
+        <div class="text">{open.b.text || '(This email has no text.)'}</div>
+      {/if}
       {#if open.b.truncated}<p class="note">This email is long; GlassBar shows the start. Open it in Gmail for the rest and attachments.</p>{/if}
     {/if}
     <button class="ghost-btn" onclick={() => web(open!.m)}><ExternalLink size={13} /> Open in Gmail</button>
@@ -139,6 +194,12 @@
           <button role="menuitem" class="add" onclick={() => { menu = false; adding = { email: '' }; }}>
             <span class="ck"><Plus size={14} /></span><span class="mt"><span>Add account</span></span>
           </button>
+          {#if current}
+            <button role="menuitem" class="remove" onclick={() => remove(current.email)}>
+              <span class="ck"><Trash2 size={14} /></span>
+              <span class="mt"><span class="ellipsis">{removing ? 'Click again to remove' : `Remove ${nameOf(current)}`}</span>{#if removing}<small>Signs out and forgets its mail here</small>{/if}</span>
+            </button>
+          {/if}
         </div>
       {/if}
     </div>
@@ -174,7 +235,7 @@
       {#each [0, 1, 2] as k (k)}<div class="row skeleton"><span class="av"></span><span class="body"><i></i></span></div>{/each}
     {:else}
       {#each sel.important as m (m.account + m.uid)}
-        <button class="imp" onclick={() => read(m)}>
+        <button class="imp" class:opened={m.opened} onclick={() => read(m)} title={m.opened ? 'Opened here · still unread in Gmail' : undefined}>
           {@render avatar(m, 34)}
           <span class="body">
             <span class="top"><b class="ellipsis">{m.fromName}</b><span class="time">{mailTime(m.date)}</span></span>
@@ -184,7 +245,7 @@
         </button>
       {/each}
       {#each sel.rest as m (m.account + m.uid)}
-        <button class="row" onclick={() => read(m)}>
+        <button class="row" class:opened={m.opened} onclick={() => read(m)} title={m.opened ? 'Opened here · still unread in Gmail' : undefined}>
           {@render avatar(m, 28)}
           <span class="body">
             <span class="top"><b class="ellipsis">{m.fromName}</b><span class="time">{mailTime(m.date)}</span></span>
@@ -250,6 +311,7 @@
   .mt small { font-size: 11px; color: var(--fg-3); }
   .mc { flex: none; font-size: 12px; font-weight: 600; color: var(--fg-dim); font-variant-numeric: tabular-nums; }
   .menu .add { color: var(--accent); font-weight: 500; }
+  .menu .remove { color: #ff3b30; }
   .sep { height: 1px; margin: 4px 8px; background: var(--line-soft); }
 
   .warn { display: flex; align-items: center; gap: var(--s-2); justify-content: space-between; font-size: 12px; padding: 6px 10px; margin-bottom: var(--s-2); border-radius: var(--r-inner); background: color-mix(in srgb, #ff9f0a 16%, transparent); }
@@ -295,6 +357,11 @@
   .ghost-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--s-3); padding: 7px 12px; border-radius: var(--r-inner); background: var(--pill); border: 1px solid var(--line-soft); font-size: 12px; }
   .ghost-btn:hover { background: var(--pill-hover); }
 
+  .text.loading { opacity: 0.7; }
+  /* Opened here: stays listed until it's read in Gmail, greyed so new mail stands out. */
+  .opened { opacity: 0.5; }
+  .opened:hover { opacity: 0.8; }
+  .html { display: block; width: 100%; min-height: 120px; border: 0; border-radius: var(--r-inner); background: #fff; }
   .skeleton i { display: block; height: 10px; width: 80%; margin: 6px 0; border-radius: 4px; background: var(--track); animation: pulse 1.2s ease-in-out infinite; }
   .row.skeleton .av { width: 28px; height: 28px; background: var(--track); }
   @keyframes pulse { 50% { opacity: 0.45; } }

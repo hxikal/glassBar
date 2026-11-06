@@ -158,12 +158,12 @@ export interface PowerInfo { mode: PowerMode | null; saverOn: boolean | null; ot
 export interface Sample { cpu: number; mem: number; gpu: number | null; rxBps: number; txBps: number; at: number; cpuTemp: number | null }
 /** Gmail (widgets/gmail.rs). Read-only: GlassBar never marks mail read in Gmail. */
 export type MailCategory = 'primary' | 'social' | 'promotions' | 'updates' | 'forums';
-export interface Mail { uid: number; fromName: string; fromAddr: string; subject: string; snippet: string; date: number; messageId: string; important: boolean; category: MailCategory }
+export interface Mail { uid: number; fromName: string; fromAddr: string; subject: string; snippet: string; date: number; messageId: string; important: boolean; category: MailCategory; /** Opened in GlassBar (still unread in Gmail). */ opened: boolean }
 export interface Inbox {
-  email: string; unread: number; important: number; categories: Partial<Record<MailCategory, number>>;
+  email: string; unread: number; important: number; /** Of unread: received today. */ today: number; categories: Partial<Record<MailCategory, number>>;
   items: Mail[]; fetchedAt: number; cached: boolean; error: string | null;
 }
-export interface MailBody { uid: number; fromName: string; fromAddr: string; to: string; subject: string; date: number; text: string; truncated: boolean }
+export interface MailBody { uid: number; fromName: string; fromAddr: string; to: string; subject: string; date: number; text: string; html: string; truncated: boolean }
 export interface Rates { base: string; rates: Record<string, number>; rateTime: number; fetchedAt: number; source: string; cached: boolean }
 /** Claude plan limit window: five_hour, seven_day, or "seven_day:<model>". */
 export interface AiWindow { key: string; name: string; usedPct: number; resetsAt: number | null }
@@ -479,8 +479,10 @@ export const ipc = {
   gmailSignOut: (email: string) => invoke<void>('gmail_sign_out', { email }),
   gmailInbox: (email: string, force = false) => invoke<Inbox>('gmail_inbox', { email, force }),
   /** Text of one message; it is then hidden from the list (still unread in Gmail). */
-  gmailOpen: (email: string, uid: number) => invoke<MailBody>('gmail_open', { email, uid }),
+  gmailOpen: (email: string, uid: number, full = false) => invoke<MailBody>('gmail_open', { email, uid, full }),
   gmailOpenWeb: (email: string, uid: number) => invoke<void>('gmail_open_web', { email, uid }),
+  /** A link clicked inside an email (web and mail links only). */
+  gmailOpenLink: (url: string) => invoke<void>('gmail_open_link', { url }),
   gmailAppPasswords: () => invoke<void>('gmail_app_passwords'),
   /** Realtime: Rust keeps a connection open per account and checks the moment mail changes. */
   gmailWatch: (emails: string[]) => invoke<void>('gmail_watch', { emails }),

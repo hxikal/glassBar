@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 const HOST: &str = "imap.gmail.com";
@@ -30,6 +30,9 @@ pub const CATEGORIES: [&str; 4] = ["social", "promotions", "updates", "forums"];
 const PREVIEW_BYTES: usize = 24 * 1024;
 /// Bytes read when a message is opened. Attachments past this are never downloaded.
 const OPEN_BYTES: usize = 1024 * 1024;
+/// When the first OPEN_BYTES cut an email off (pictures sent inside it), the whole one is read
+/// next, up to this, so its pictures appear a moment later.
+const FULL_BYTES: usize = 10 * 1024 * 1024;
 /// A whole IMAP response may not grow past this.
 const MAX_RESPONSE: usize = 64 * 1024 * 1024;
 /// Dock and panel ask together; one fetch serves both.
@@ -40,8 +43,17 @@ const IDLE_SECS: u64 = 5 * 60;
 const TIMED_OUT: &str = "timed out";
 const AUTH_FAILED: &str = "Gmail didn't accept this App Password. Check the address, or make a new App Password.";
 
-/// One Gmail account talks to the server at a time.
+/// Inbox checks run one at a time (opening a message doesn't wait for them).
+// ponytail: one lock for all accounts' checks; per-account locks if many accounts make it slow.
 static BUSY: Mutex<()> = Mutex::new(());
+/// Guards the read-modify-write of `gmail:read:<email>` (check and open both change it).
+static READ: Mutex<()> = Mutex::new(());
+/// Signed-in connections kept for reuse: signing in is most of the time a check or an open takes.
+static POOL: Mutex<Vec<(String, Imap, Instant)>> = Mutex::new(Vec::new());
+/// A kept connection unused this long is dropped (Gmail ends idle ones itself after ~30 min).
+const KEEP: Duration = Duration::from_secs(4 * 60);
+/// Kept connections per account (a check and an open can run together).
+const KEEP_PER_ACCOUNT: usize = 2;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +73,9 @@ pub struct Mail {
     /// primary, social, promotions, updates or forums.
     #[serde(default)]
     pub category: String,
+    /// Already opened in GlassBar (still unread in Gmail): listed, greyed, left out of counts.
+    #[serde(default)]
+    pub opened: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -72,6 +87,9 @@ pub struct Inbox {
     /// Of `unread`: marked important by Gmail.
     #[serde(default)]
     pub important: u32,
+    /// Of `unread`: received today (local time). The dock's badge.
+    #[serde(default)]
+    pub today: u32,
     /// Of `unread`, per category (primary, social, promotions, updates, forums).
     #[serde(default)]
     pub categories: BTreeMap<String, u32>,
@@ -95,6 +113,9 @@ pub struct MailBody {
     pub subject: String,
     pub date: i64,
     pub text: String,
+    /// The email's own HTML when it has some (else empty), pictures sent inside it already in
+    /// place as data: URLs. The panel shows it with scripts off and remote pictures blocked.
+    pub html: String,
     /// The message was longer than what was read.
     pub truncated: bool,
 }
@@ -115,6 +136,9 @@ struct Store {
     /// Highest unread UID seen: anything above it next time is new mail.
     #[serde(default)]
     max_uid: u32,
+    /// When each unread message of the last two days reached Gmail (Unix ms), for "today".
+    #[serde(default)]
+    arrived: BTreeMap<u32, i64>,
 }
 
 // ---------- pure helpers (tested) ----------
@@ -299,6 +323,7 @@ pub fn summary(uid: u32, raw: &[u8]) -> Option<Mail> {
         // Set per check by inbox_of (Gmail can change both).
         important: false,
         category: String::new(),
+        opened: false,
     })
 }
 
@@ -320,8 +345,28 @@ pub fn body(uid: u32, raw: &[u8], truncated: bool) -> Option<MailBody> {
         subject: m.subject().map(squash).filter(|s| !s.is_empty()).unwrap_or_else(|| "(no subject)".into()),
         date: date_of(&m),
         text: text.trim().to_string(),
+        html: html_of(&m, truncated.then_some(raw.len())),
         truncated,
     })
+}
+
+/// The HTML part, with `cid:` pictures (sent inside the email) turned into data: URLs.
+/// `cut_at`: the read stopped there; a picture reaching it is only partly here and is left out
+/// (its base64 text would otherwise be shown as a broken picture).
+fn html_of(m: &mail_parser::Message, cut_at: Option<usize>) -> String {
+    use base64::Engine;
+    use mail_parser::MimeHeaders;
+    if !m.html_part(0).is_some_and(|p| p.is_text_html()) { return String::new(); }
+    let mut html = m.body_html(0).map(|h| h.into_owned()).unwrap_or_default();
+    for p in &m.parts {
+        let (Some(id), Some(ct)) = (p.content_id(), p.content_type()) else { continue };
+        if !ct.ctype().eq_ignore_ascii_case("image") { continue; }
+        if p.is_encoding_problem || cut_at.is_some_and(|n| p.offset_end as usize >= n.saturating_sub(4)) { continue; }
+        let mime = format!("image/{}", ct.subtype().unwrap_or("png"));
+        let url = format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(p.contents()));
+        html = html.replace(&format!("cid:{}", id.trim_matches(|c| c == '<' || c == '>')), &url);
+    }
+    html
 }
 
 /// Each UID's category; a UID in none of them is Primary.
@@ -333,10 +378,10 @@ pub fn cat_map(cats: &BTreeMap<String, Vec<u32>>) -> HashMap<u32, &'static str> 
 
 fn cat_of(m: &HashMap<u32, &'static str>, uid: u32) -> &'static str { m.get(&uid).copied().unwrap_or("primary") }
 
-/// What to list: unread UIDs not opened in GlassBar, newest first, at most PRIMARY_LIST
+/// What to list: unread UIDs (opened in GlassBar or not), newest first, at most PRIMARY_LIST
 /// from Primary and OTHER_LIST from each other category (so promotions can't crowd it out).
-pub fn wanted(unseen: &[u32], read_here: &HashSet<u32>, cats: &HashMap<u32, &'static str>) -> Vec<u32> {
-    let mut v: Vec<u32> = unseen.iter().copied().filter(|u| !read_here.contains(u)).collect();
+pub fn wanted(unseen: &[u32], cats: &HashMap<u32, &'static str>) -> Vec<u32> {
+    let mut v: Vec<u32> = unseen.to_vec();
     v.sort_unstable_by(|a, b| b.cmp(a));
     let mut taken: HashMap<&str, usize> = HashMap::new();
     v.retain(|u| {
@@ -396,7 +441,8 @@ pub fn has_account(settings: &serde_json::Value, email: &str) -> bool {
 
 type Tls = rustls::StreamOwned<rustls::ClientConnection, TcpStream>;
 
-struct Imap { r: BufReader<Tls>, n: u32 }
+/// `inbox`: INBOX is open (EXAMINE) on this connection.
+struct Imap { r: BufReader<Tls>, n: u32, inbox: bool }
 
 impl Imap {
     fn connect() -> Res<Imap> {
@@ -412,7 +458,7 @@ impl Imap {
             .with_no_client_auth();
         let name = rustls::pki_types::ServerName::try_from(HOST).map_err(|e| e.to_string())?;
         let conn = rustls::ClientConnection::new(Arc::new(cfg), name).map_err(|e| e.to_string())?;
-        let mut s = Imap { r: BufReader::new(rustls::StreamOwned::new(conn, tcp)), n: 0 };
+        let mut s = Imap { r: BufReader::new(rustls::StreamOwned::new(conn, tcp)), n: 0, inbox: false };
         let greeting = s.line()?;
         if !greeting.starts_with(b"* OK") { return Err("Gmail refused the connection".into()); }
         Ok(s)
@@ -471,7 +517,7 @@ impl Imap {
     }
 
     /// INBOX, read-only: nothing done here can mark a message read.
-    fn examine(&mut self) -> Res<u64> { self.cmd("EXAMINE INBOX").map(|d| uidvalidity(&d)) }
+    fn examine(&mut self) -> Res<u64> { let v = self.cmd("EXAMINE INBOX").map(|d| uidvalidity(&d))?; self.inbox = true; Ok(v) }
 
     fn fetch(&mut self, uids: &[u32], bytes: usize) -> Res<Vec<(u32, Vec<u8>)>> {
         if uids.is_empty() { return Ok(Vec::new()); }
@@ -538,9 +584,12 @@ fn watch(app: AppHandle, email: String) {
     let mut wait = 15;
     loop {
         if notify_mode(&app, &email).is_none() || secrets().get(&secret_key(&email)).is_none() { break; }
+        let began = Instant::now();
         match idle_session(&app, &email) {
             Err(e) if e == AUTH_FAILED => break,
             Err(e) => {
+                // A connection that worked for a while and then dropped starts the wait over.
+                if began.elapsed() > Duration::from_secs(120) { wait = 15; }
                 crate::applog::log(format!("gmail: watch {email}: {e}; retry in {wait}s"));
                 std::thread::sleep(Duration::from_secs(wait));
                 wait = (wait * 2).min(600);
@@ -580,6 +629,41 @@ fn password(email: &str) -> Res<String> {
     secrets().get(&secret_key(email)).ok_or_else(|| "Not signed in. Add your Gmail address and App Password in this widget's settings.".into())
 }
 
+/// Run `f` on a signed-in connection: a kept one when there is one, else a new sign-in. A kept
+/// one that fails (Gmail may have closed it) is dropped and `f` runs once more on a new one.
+/// Everything run here is read-only, so running it twice is harmless.
+fn session<T>(email: &str, f: impl Fn(&mut Imap) -> Res<T>) -> Res<T> {
+    let pw = password(email)?;
+    let kept = {
+        let mut p = POOL.lock().unwrap_or_else(|e| e.into_inner());
+        p.retain(|(_, _, used)| used.elapsed() < KEEP);
+        p.iter().position(|(e, _, _)| e == email).map(|i| { let (_, s, used) = p.swap_remove(i); (s, used) })
+    };
+    if let Some((mut s, used)) = kept {
+        // A connection the network dropped (sleep, Wi-Fi change) can look open and make the next
+        // read wait out its whole timeout; a NOOP with a short timeout finds out first.
+        s.set_timeout(3);
+        // Used moments ago: skip the check (each one is a round trip, ~200 ms from Malaysia).
+        let alive = used.elapsed() < Duration::from_secs(30) || s.cmd("NOOP").is_ok();
+        s.set_timeout(30);
+        if alive {
+            if let Ok(v) = f(&mut s) { give_back(email, s); return Ok(v); }
+        }
+    }
+    let mut s = Imap::login(email, &pw)?;
+    let v = f(&mut s)?;
+    give_back(email, s);
+    Ok(v)
+}
+
+fn give_back(email: &str, s: Imap) {
+    let mut p = POOL.lock().unwrap_or_else(|e| e.into_inner());
+    if p.iter().filter(|(e, _, _)| e == email).count() < KEEP_PER_ACCOUNT { p.push((email.to_string(), s, Instant::now())); }
+}
+
+/// Signed out or a new App Password: kept connections of the old sign-in go.
+fn forget_sessions(email: &str) { POOL.lock().unwrap_or_else(|e| e.into_inner()).retain(|(e, _, _)| e != email); }
+
 fn load<T: for<'a> Deserialize<'a> + Default>(app: &AppHandle, key: &str) -> T {
     let db = app.state::<Db>();
     let c = db.lock();
@@ -593,7 +677,7 @@ fn save<T: Serialize>(app: &AppHandle, key: &str, v: &T) {
 fn inbox_of(email: &str, st: &Store, read_here: &HashSet<u32>) -> Inbox {
     let cats = cat_map(&st.cats);
     let important: HashSet<u32> = st.important.iter().copied().collect();
-    let want = wanted(&st.unseen, read_here, &cats);
+    let want = wanted(&st.unseen, &cats);
     let visible: Vec<u32> = st.unseen.iter().copied().filter(|u| !read_here.contains(u)).collect();
     let mut categories: BTreeMap<String, u32> = BTreeMap::new();
     for u in &visible { *categories.entry(cat_of(&cats, *u).to_string()).or_default() += 1; }
@@ -601,10 +685,12 @@ fn inbox_of(email: &str, st: &Store, read_here: &HashSet<u32>) -> Inbox {
         email: email.into(),
         unread: visible.len() as u32,
         important: visible.iter().filter(|u| important.contains(u)).count() as u32,
+        today: received_today(&visible, &st.arrived, local_midnight_ms()),
         categories,
         items: want.iter().filter_map(|u| st.mails.get(u).map(|m| Mail {
             important: important.contains(u),
             category: cat_of(&cats, *u).to_string(),
+            opened: read_here.contains(u),
             ..m.clone()
         })).collect(),
         fetched_at: st.fetched_at,
@@ -613,33 +699,81 @@ fn inbox_of(email: &str, st: &Store, read_here: &HashSet<u32>) -> Inbox {
     }
 }
 
-fn check(email: &str, st: &mut Store, read_here: &HashSet<u32>) -> Res<()> {
-    let pw = password(email)?;
-    let mut s = Imap::login(email, &pw)?;
-    let v = s.examine()?;
-    if v != st.uidvalidity { *st = Store { uidvalidity: v, ..Store::default() }; }
-    let unseen = search_uids(&parse_lines(&s.cmd("UID SEARCH UNSEEN")?));
-    // Gmail's own search (X-GM-RAW) knows its categories and what it marks important.
-    let important = search_uids(&parse_lines(&s.cmd(r#"UID SEARCH UNSEEN X-GM-RAW "is:important""#)?));
-    let mut cats = BTreeMap::new();
-    for c in CATEGORIES {
-        let found = search_uids(&parse_lines(&s.cmd(&format!(r#"UID SEARCH UNSEEN X-GM-RAW "category:{c}""#))?));
-        cats.insert(c.to_string(), found);
-    }
-    let want = wanted(&unseen, read_here, &cat_map(&cats));
-    let new: Vec<u32> = want.iter().copied().filter(|u| !st.mails.contains_key(u)).collect();
-    for chunk in new.chunks(10) {
-        for (uid, raw) in s.fetch(chunk, PREVIEW_BYTES)? {
-            if let Some(m) = summary(uid, &raw) { st.mails.insert(uid, m); }
+/// Start of today on this PC's clock, Unix ms.
+fn local_midnight_ms() -> i64 {
+    use chrono::TimeZone;
+    let d = chrono::Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap_or_default();
+    chrono::Local.from_local_datetime(&d).earliest().map(|t| t.timestamp_millis()).unwrap_or(0)
+}
+
+/// How many of `uids` arrived at or after `midnight`.
+pub fn received_today(uids: &[u32], arrived: &BTreeMap<u32, i64>, midnight: i64) -> u32 {
+    uids.iter().filter(|u| arrived.get(u).is_some_and(|t| *t >= midnight)).count() as u32
+}
+
+/// IMAP date for SEARCH SINCE: `5-Nov-2026`.
+fn imap_date(d: chrono::NaiveDate) -> String { d.format("%-d-%b-%Y").to_string() }
+
+/// (UID, INTERNALDATE as Unix ms) from `* n FETCH (UID u INTERNALDATE "06-Nov-2026 10:33:00 +0000")`.
+pub fn internal_dates(lines: &[Vec<Tok>]) -> Vec<(u32, i64)> {
+    let mut out = Vec::new();
+    for l in lines {
+        if l.len() < 4 || l[0].atom() != Some("*") { continue; }
+        let Tok::List(items) = &l[3] else { continue };
+        let (mut uid, mut at) = (None, None);
+        for kv in items.chunks(2) {
+            let [k, v] = kv else { continue };
+            match k.atom().map(str::to_ascii_uppercase).as_deref() {
+                Some("UID") => uid = v.num().map(|n| n as u32),
+                Some("INTERNALDATE") => at = v.bytes().and_then(|b| std::str::from_utf8(b).ok())
+                    .and_then(|s| chrono::DateTime::parse_from_str(s.trim(), "%d-%b-%Y %H:%M:%S %z").ok())
+                    .map(|t| t.timestamp_millis()),
+                _ => {}
+            }
         }
+        if let (Some(u), Some(t)) = (uid, at) { out.push((u, t)); }
     }
-    s.logout();
+    out
+}
+
+fn check(email: &str, st: &mut Store) -> Res<()> {
+    let (v, unseen, important, cats, want, fetched, arrived) = session(email, |s| {
+        // EXAMINE again on a kept connection too: it is cheap and gives a fresh UIDVALIDITY.
+        let v = s.examine()?;
+        let unseen = search_uids(&parse_lines(&s.cmd("UID SEARCH UNSEEN")?));
+        // Gmail's own search (X-GM-RAW) knows its categories and what it marks important.
+        let important = search_uids(&parse_lines(&s.cmd(r#"UID SEARCH UNSEEN X-GM-RAW "is:important""#)?));
+        let mut cats = BTreeMap::new();
+        for c in CATEGORIES {
+            let found = search_uids(&parse_lines(&s.cmd(&format!(r#"UID SEARCH UNSEEN X-GM-RAW "category:{c}""#))?));
+            cats.insert(c.to_string(), found);
+        }
+        let want = wanted(&unseen, &cat_map(&cats));
+        let known = |u: &u32| v == st.uidvalidity && st.mails.contains_key(u);
+        let new: Vec<u32> = want.iter().copied().filter(|u| !known(u)).collect();
+        let mut fetched = Vec::new();
+        for chunk in new.chunks(10) { fetched.extend(s.fetch(chunk, PREVIEW_BYTES)?); }
+        // Unread since yesterday (SINCE is by date only, in Gmail's time zone), then each one's
+        // exact arrival, so "today" follows this PC's clock.
+        let since = imap_date(chrono::Local::now().date_naive() - chrono::Duration::days(1));
+        let recent = search_uids(&parse_lines(&s.cmd(&format!("UID SEARCH UNSEEN SINCE {since}"))?));
+        let arrived = if recent.is_empty() { Vec::new() } else {
+            let set = recent.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+            internal_dates(&parse_lines(&s.cmd(&format!("UID FETCH {set} (UID INTERNALDATE)"))?))
+        };
+        Ok((v, unseen, important, cats, want, fetched, arrived))
+    })?;
+    if v != st.uidvalidity { *st = Store { uidvalidity: v, ..Store::default() }; }
+    for (uid, raw) in fetched {
+        if let Some(m) = summary(uid, &raw) { st.mails.insert(uid, m); }
+    }
     // Keep only what is still listed.
     let keep: HashSet<u32> = want.into_iter().collect();
     st.mails.retain(|u, _| keep.contains(u));
     st.unseen = unseen;
     st.important = important;
     st.cats = cats;
+    st.arrived = arrived.into_iter().collect();
     st.fetched_at = now_ms();
     Ok(())
 }
@@ -651,15 +785,20 @@ fn get(app: &AppHandle, email: &str, force: bool) -> Res<Inbox> {
     let force = force || crate::widgets::first_since_start(&inbox_key(email));
     if !force && st.fetched_at > 0 && now_ms() - st.fetched_at < TTL_MS { return Ok(inbox_of(email, &st, &read_here)); }
     let (prev_max, prev_validity, had_baseline) = (st.max_uid, st.uidvalidity, st.fetched_at > 0);
-    match check(email, &mut st, &read_here) {
+    match check(email, &mut st) {
         Ok(()) => {
             let new = arrived(prev_max, had_baseline && prev_validity == st.uidvalidity, &st.unseen);
             st.max_uid = st.unseen.iter().copied().max().unwrap_or(0).max(if prev_validity == st.uidvalidity { prev_max } else { 0 });
-            // Forget "opened here" for messages no longer unread in Gmail.
-            let unseen: HashSet<u32> = st.unseen.iter().copied().collect();
-            read_here.retain(|u| unseen.contains(u));
+            // Forget "opened here" for messages no longer unread in Gmail. Read the list again:
+            // a message may have been opened while this check ran.
+            {
+                let _r = READ.lock().unwrap_or_else(|e| e.into_inner());
+                read_here = load::<Vec<u32>>(app, &read_key(email)).into_iter().collect();
+                let unseen: HashSet<u32> = st.unseen.iter().copied().collect();
+                read_here.retain(|u| unseen.contains(u));
+                save(app, &read_key(email), &read_here.iter().collect::<Vec<_>>());
+            }
             save(app, &inbox_key(email), &st);
-            save(app, &read_key(email), &read_here.iter().collect::<Vec<_>>());
             let ib = inbox_of(email, &st, &read_here);
             let _ = app.emit("gmail:changed", &ib);
             if !new.is_empty() {
@@ -677,21 +816,20 @@ fn get(app: &AppHandle, email: &str, force: bool) -> Res<Inbox> {
     }
 }
 
-fn open(app: &AppHandle, email: &str, uid: u32) -> Res<MailBody> {
-    let raw = {
-        let _g = BUSY.lock().unwrap_or_else(|e| e.into_inner());
-        let pw = password(email)?;
-        let mut s = Imap::login(email, &pw)?;
-        s.examine()?;
-        let r = s.fetch(&[uid], OPEN_BYTES)?;
-        s.logout();
-        r.into_iter().find(|(u, _)| *u == uid).map(|(_, b)| b).ok_or("This email is no longer in your inbox")?
-    };
-    let b = body(uid, &raw, raw.len() >= OPEN_BYTES).ok_or("Couldn't read this email")?;
+fn open(app: &AppHandle, email: &str, uid: u32, full: bool) -> Res<MailBody> {
+    // Not behind BUSY: an open runs on its own connection while a check is going.
+    let limit = if full { FULL_BYTES } else { OPEN_BYTES };
+    let r = session(email, |s| { if !s.inbox { s.examine()?; } s.fetch(&[uid], limit) })?;
+    let raw = r.into_iter().find(|(u, _)| *u == uid).map(|(_, b)| b).ok_or("This email is no longer in your inbox")?;
+    let b = body(uid, &raw, raw.len() >= limit).ok_or("Couldn't read this email")?;
     // Opened here: hide it from the list (it stays unread in Gmail).
-    let mut read_here: Vec<u32> = load(app, &read_key(email));
-    if !read_here.contains(&uid) { read_here.push(uid); }
-    save(app, &read_key(email), &read_here);
+    let read_here: Vec<u32> = {
+        let _r = READ.lock().unwrap_or_else(|e| e.into_inner());
+        let mut v: Vec<u32> = load(app, &read_key(email));
+        if !v.contains(&uid) { v.push(uid); }
+        save(app, &read_key(email), &v);
+        v
+    };
     let st: Store = load(app, &inbox_key(email));
     let _ = app.emit("gmail:changed", inbox_of(email, &st, &read_here.into_iter().collect()));
     Ok(b)
@@ -711,6 +849,7 @@ pub async fn gmail_sign_in(app: AppHandle, email: String, password: String) -> R
     crate::widgets::blocking(move || -> Res<()> {
         Imap::login(&email, &pw)?.logout();
         secrets().set(&secret_key(&email), &email, &pw)?;
+        forget_sessions(&email);
         save(&app, &inbox_key(&email), &Store::default());
         // Every dock and panel showing this account checks again now.
         let _ = app.emit("gmail:changed", Inbox { email, ..Inbox::default() });
@@ -722,6 +861,7 @@ pub async fn gmail_sign_in(app: AppHandle, email: String, password: String) -> R
 pub async fn gmail_sign_out(app: AppHandle, email: String) -> Res<()> {
     let email = norm_email(&email)?;
     secrets().delete(&secret_key(&email))?;
+    forget_sessions(&email);
     save(&app, &inbox_key(&email), &Store::default());
     save(&app, &read_key(&email), &Vec::<u32>::new());
     let _ = app.emit("gmail:changed", Inbox { email, ..Inbox::default() });
@@ -731,14 +871,51 @@ pub async fn gmail_sign_out(app: AppHandle, email: String) -> Res<()> {
 #[tauri::command]
 pub async fn gmail_inbox(app: AppHandle, email: String, force: bool) -> Res<Inbox> {
     let email = norm_email(&email)?;
-    crate::widgets::blocking(move || get(&app, &email, force)).await?
+    crate::widgets::blocking(move || {
+        if !force { if let Some(ib) = cached_now(&app, &email) { return Ok(ib); } }
+        get(&app, &email, force)
+    }).await?
 }
 
-/// Read one message (text only). It is then hidden from the list, not marked read in Gmail.
+/// Accounts with a background check running (so opening the panel twice starts one).
+static REFRESHING: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// The last inbox seen, at once, so the dock and panel never open empty while Gmail is asked.
+/// When it is old (or the first since GlassBar started) a check runs behind and its result
+/// arrives through `gmail:changed`. None when there is nothing saved yet or not signed in.
+fn cached_now(app: &AppHandle, email: &str) -> Option<Inbox> {
+    if secrets().get(&secret_key(email)).is_none() { return None; }
+    let st: Store = load(app, &inbox_key(email));
+    if st.fetched_at == 0 { return None; }
+    let read_here: HashSet<u32> = load::<Vec<u32>>(app, &read_key(email)).into_iter().collect();
+    let stale = now_ms() - st.fetched_at >= TTL_MS || crate::widgets::first_since_start(&inbox_key(email));
+    if stale {
+        let mut r = REFRESHING.lock().unwrap_or_else(|e| e.into_inner());
+        if !r.iter().any(|e| e == email) {
+            r.push(email.to_string());
+            let (app, email) = (app.clone(), email.to_string());
+            std::thread::spawn(move || {
+                // Its result (or a failure) reaches the panel through gmail:changed.
+                if let Err(e) = get(&app, &email, true) {
+                    // e.g. the App Password was revoked: keep showing the old list, with why.
+                    crate::applog::log(format!("gmail: check {email}: {e}"));
+                    let st: Store = load(&app, &inbox_key(&email));
+                    let read_here: HashSet<u32> = load::<Vec<u32>>(&app, &read_key(&email)).into_iter().collect();
+                    let _ = app.emit("gmail:changed", Inbox { cached: true, error: Some(e), ..inbox_of(&email, &st, &read_here) });
+                }
+                REFRESHING.lock().unwrap_or_else(|e| e.into_inner()).retain(|e| e != &email);
+            });
+        }
+    }
+    Some(inbox_of(email, &st, &read_here))
+}
+
+/// Read one message. It is then hidden from the list, not marked read in Gmail. `full`: the
+/// whole message (up to FULL_BYTES), asked for when the first read came back `truncated`.
 #[tauri::command]
-pub async fn gmail_open(app: AppHandle, email: String, uid: u32) -> Res<MailBody> {
+pub async fn gmail_open(app: AppHandle, email: String, uid: u32, full: Option<bool>) -> Res<MailBody> {
     let email = norm_email(&email)?;
-    crate::widgets::blocking(move || open(&app, &email, uid)).await?
+    crate::widgets::blocking(move || open(&app, &email, uid, full.unwrap_or(false))).await?
 }
 
 /// Start realtime watching for these accounts (once each; repeat calls are free).
@@ -761,6 +938,18 @@ pub async fn gmail_open_web(app: AppHandle, email: String, uid: u32) -> Res<()> 
     let st: Store = load(&app, &inbox_key(&email));
     let id = st.mails.get(&uid).map(|m| m.message_id.clone()).unwrap_or_default();
     shell().launch(&web_link(&email, &id), "")
+}
+
+/// A link clicked inside an email, in the browser. Only web and mail links: an email must
+/// not be able to start a program or open a file.
+#[tauri::command]
+pub async fn gmail_open_link(url: String) -> Res<()> {
+    let u = url.trim();
+    let lower = u.to_ascii_lowercase();
+    if !(lower.starts_with("https://") || lower.starts_with("http://") || lower.starts_with("mailto:")) {
+        return Err("Only web and email links open from an email".into());
+    }
+    shell().launch(u, "")
 }
 
 /// Google's App Passwords page, to make one.
@@ -836,20 +1025,65 @@ mod tests {
         let b = body(1, raw, false).unwrap();
         assert!(b.text.contains("Your order shipped"), "{}", b.text);
         assert!(!b.text.contains("<b>"));
+        assert!(b.html.contains("<b>order</b>"), "{}", b.html);
         assert_eq!(b.from_name, "shop@x.com");
+    }
+
+    #[test]
+    fn counts_mail_received_today() {
+        let lines = parse_lines(b"* 3 FETCH (UID 41 INTERNALDATE \"06-Nov-2026 01:30:00 +0000\")
+* 4 FETCH (INTERNALDATE \"05-Nov-2026 23:59:00 +0800\" UID 42)
+");
+        let d = internal_dates(&lines);
+        assert_eq!(d, vec![(41, 1793928600000), (42, 1793894340000)]);
+        let arrived: BTreeMap<u32, i64> = d.into_iter().collect();
+        // Midnight 6 Nov in UTC+8 = 5 Nov 16:00 UTC: 41 is today, 42 (23:59 on the 5th) isn't.
+        assert_eq!(received_today(&[41, 42, 7], &arrived, 1793894400000), 1);
+        assert_eq!(imap_date(chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap()), "5-Nov-2026");
+    }
+
+    #[test]
+    fn plain_mail_has_no_html_and_inline_pictures_are_embedded() {
+        let plain = b"From: a@x.com
+Subject: Hi
+Content-Type: text/plain
+
+Hello
+";
+        assert_eq!(body(1, plain, false).unwrap().html, "");
+        let raw = b"From: a@x.com
+Subject: Pic
+Content-Type: multipart/related; boundary=b
+
+--b
+Content-Type: text/html
+
+<img src=\"cid:logo@x\">
+--b
+Content-Type: image/png
+Content-ID: <logo@x>
+Content-Transfer-Encoding: base64
+
+aGk=
+--b--
+";
+        let h = body(1, raw, false).unwrap().html;
+        assert!(h.contains("src=\"data:image/png;base64,aGk=\""), "{h}");
+        // Cut off inside the picture: it is left out, not shown as a broken one.
+        let cut = &raw[..raw.len() - 12];
+        assert!(!body(1, cut, true).unwrap().html.contains("data:image"));
     }
 
     fn mail(uid: u32) -> Mail {
         Mail { uid, from_name: "a".into(), from_addr: "a".into(), subject: "s".into(), snippet: "".into(), date: 0,
-               message_id: "".into(), important: false, category: "".into() }
+               message_id: "".into(), important: false, category: "".into(), opened: false }
     }
 
     #[test]
-    fn lists_newest_unread_not_opened_here() {
-        let read: HashSet<u32> = [5].into_iter().collect();
-        assert_eq!(wanted(&[1, 9, 5, 3], &read, &HashMap::new()), vec![9, 3, 1]);
+    fn lists_newest_unread_first() {
+        assert_eq!(wanted(&[1, 9, 5, 3], &HashMap::new()), vec![9, 5, 3, 1]);
         let many: Vec<u32> = (1..=80).collect();
-        let w = wanted(&many, &HashSet::new(), &HashMap::new());
+        let w = wanted(&many, &HashMap::new());
         assert_eq!(w.len(), PRIMARY_LIST);
         assert_eq!(w[0], 80);
     }
@@ -859,7 +1093,7 @@ mod tests {
         // The newest 100 are promotions; Primary still gets its full share.
         let cats: BTreeMap<String, Vec<u32>> = [("promotions".to_string(), (101..=200).collect())].into_iter().collect();
         let unseen: Vec<u32> = (1..=200).collect();
-        let w = wanted(&unseen, &HashSet::new(), &cat_map(&cats));
+        let w = wanted(&unseen, &cat_map(&cats));
         assert_eq!(w.iter().filter(|u| **u > 100).count(), OTHER_LIST);
         assert_eq!(w.iter().filter(|u| **u <= 100).count(), PRIMARY_LIST);
         assert!(w.windows(2).all(|p| p[0] > p[1]), "newest first");
@@ -871,7 +1105,11 @@ mod tests {
         st.cats.insert("promotions".into(), vec![4]);
         st.mails.insert(3, mail(3));
         st.mails.insert(4, mail(4));
+        st.mails.insert(2, mail(2));
         let ib = inbox_of("me@gmail.com", &st, &[2].into_iter().collect());
+        // Opened here: still listed (greyed), not counted.
+        assert!(ib.items.iter().find(|m| m.uid == 2).unwrap().opened);
+        assert!(!ib.items.iter().find(|m| m.uid == 3).unwrap().opened);
         assert_eq!(ib.unread, 3);
         assert_eq!(ib.important, 1);
         assert_eq!(ib.categories.get("primary"), Some(&2));

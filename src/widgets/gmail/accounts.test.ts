@@ -3,10 +3,10 @@ import type { Inbox, Mail } from '../../lib/ipc';
 import { accountsOf, chipsFor, colorOf, nameOf, pick, summaryLine, totals } from './accounts';
 
 const mail = (uid: number, date: number, extra: Partial<Mail> = {}): Mail => ({
-  uid, date, fromName: 'a', fromAddr: 'a@x.com', subject: 's', snippet: '', messageId: '', important: false, category: 'primary', ...extra,
+  uid, date, fromName: 'a', fromAddr: 'a@x.com', subject: 's', snippet: '', messageId: '', important: false, category: 'primary', opened: false, ...extra,
 });
 const inbox = (email: string, items: Mail[], extra: Partial<Inbox> = {}): Inbox => ({
-  email, unread: items.length, important: 0, categories: {}, items, fetchedAt: 1, cached: false, error: null, ...extra,
+  email, unread: items.length, important: 0, today: 0, categories: {}, items, fetchedAt: 1, cached: false, error: null, ...extra,
 });
 
 describe('accountsOf', () => {
@@ -36,7 +36,7 @@ describe('totals and summaryLine', () => {
       inbox('a', [], { unread: 8, important: 2, categories: { primary: 3, promotions: 5 } }),
       inbox('b', [], { unread: 4, important: 1, categories: { primary: 2, promotions: 2 } }),
     ]);
-    expect(t).toEqual({ unread: 12, important: 3, categories: { primary: 5, promotions: 7 } });
+    expect(t).toEqual({ unread: 12, important: 3, categories: { all: 12, primary: 5, promotions: 7 } });
     expect(summaryLine(t)).toBe('12 new · 3 important · 7 promotions');
   });
   it('leaves out zeros', () => {
@@ -47,8 +47,8 @@ describe('totals and summaryLine', () => {
 
 describe('chipsFor', () => {
   it('shows Updates and Forums only when they have mail', () => {
-    expect(chipsFor({}).map((c) => c.id)).toEqual(['primary', 'promotions', 'social']);
-    expect(chipsFor({ forums: 1 }).map((c) => c.id)).toEqual(['primary', 'promotions', 'social', 'forums']);
+    expect(chipsFor({}).map((c) => c.id)).toEqual(['all', 'primary', 'promotions', 'social']);
+    expect(chipsFor({ forums: 1 }).map((c) => c.id)).toEqual(['all', 'primary', 'promotions', 'social', 'forums']);
   });
 });
 
@@ -60,5 +60,10 @@ describe('pick', () => {
     ], 'primary');
     expect(r.important.map((m) => [m.account, m.uid])).toEqual([['a@x.com', 2]]);
     expect(r.rest.map((m) => [m.account, m.uid])).toEqual([['b@x.com', 9], ['a@x.com', 1]]);
+  });
+
+  it('All mail takes every category', () => {
+    const r = pick([inbox('a@x.com', [mail(1, 100), mail(3, 500, { category: 'promotions' })])], 'all');
+    expect(r.rest.map((m) => m.uid)).toEqual([3, 1]);
   });
 });

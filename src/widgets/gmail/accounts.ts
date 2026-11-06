@@ -15,7 +15,11 @@ const COLORS = ['#4f7cff', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#06b6d4'
 /** Each account keeps the colour of its place in the list. */
 export const colorOf = (i: number) => COLORS[((i % COLORS.length) + COLORS.length) % COLORS.length];
 
-export const CATEGORIES: { id: MailCategory; name: string }[] = [
+/** A panel tab: one of Gmail's categories, or all of them together. */
+export type Tab = MailCategory | 'all';
+
+export const CATEGORIES: { id: Tab; name: string }[] = [
+  { id: 'all', name: 'All mail' },
   { id: 'primary', name: 'Primary' },
   { id: 'promotions', name: 'Promotions' },
   { id: 'social', name: 'Social' },
@@ -23,11 +27,12 @@ export const CATEGORIES: { id: MailCategory; name: string }[] = [
   { id: 'forums', name: 'Forums' },
 ];
 
-/** Primary, Promotions and Social always; Updates and Forums only when they have mail. */
-export const chipsFor = (counts: Partial<Record<MailCategory, number>>) =>
-  CATEGORIES.filter((c) => ['primary', 'promotions', 'social'].includes(c.id) || (counts[c.id] ?? 0) > 0);
+/** All mail, Primary, Promotions and Social always; Updates and Forums only when they have mail. */
+export const chipsFor = (counts: Partial<Record<Tab, number>>) =>
+  CATEGORIES.filter((c) => ['all', 'primary', 'promotions', 'social'].includes(c.id) || (counts[c.id] ?? 0) > 0);
 
-export interface Totals { unread: number; important: number; categories: Partial<Record<MailCategory, number>> }
+/** `categories.all` is every unread one, so a tab's count is always `categories[tab]`. */
+export interface Totals { unread: number; important: number; categories: Partial<Record<Tab, number>> }
 
 export function totals(inboxes: Inbox[]): Totals {
   const t: Totals = { unread: 0, important: 0, categories: {} };
@@ -36,6 +41,7 @@ export function totals(inboxes: Inbox[]): Totals {
     t.important += i.important ?? 0;
     for (const [k, n] of Object.entries(i.categories ?? {}) as [MailCategory, number][]) t.categories[k] = (t.categories[k] ?? 0) + n;
   }
+  if (t.unread) t.categories.all = t.unread;
   return t;
 }
 
@@ -52,8 +58,8 @@ export interface Tagged extends Mail { account: string }
 
 /** One category's mail from the chosen inboxes: Gmail's important ones first (as highlighted
  *  cards), then the rest; each newest first. */
-export function pick(inboxes: Inbox[], cat: MailCategory): { important: Tagged[]; rest: Tagged[] } {
-  const all: Tagged[] = inboxes.flatMap((i) => i.items.filter((m) => (m.category || 'primary') === cat).map((m) => ({ ...m, account: i.email })));
+export function pick(inboxes: Inbox[], cat: Tab): { important: Tagged[]; rest: Tagged[] } {
+  const all: Tagged[] = inboxes.flatMap((i) => i.items.filter((m) => cat === 'all' || (m.category || 'primary') === cat).map((m) => ({ ...m, account: i.email })));
   all.sort((a, b) => b.date - a.date || b.uid - a.uid);
   return { important: all.filter((m) => m.important), rest: all.filter((m) => !m.important) };
 }

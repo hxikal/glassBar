@@ -22,8 +22,8 @@ export default defineWidget<GmailSettings>({
   description: 'Unread email from your Gmail accounts, sorted like Gmail, read right in the dock (never marked read in Gmail)',
   category: 'media',
   icon: Mail,
-  // One size: the icon and its badge say it all.
-  sizes: ['small'],
+  // Small: the icon and its badge. Medium and large: plus the newest email.
+  sizes: ['small', 'medium', 'large'],
   defaultSize: 'small',
   defaults: { accounts: [], every: 15, notify: 'smart' },
   Pill,

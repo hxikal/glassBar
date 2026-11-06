@@ -271,7 +271,7 @@ fn main() {
             widgets::water::water_today, widgets::water::water_add, widgets::water::water_remove, widgets::water::water_snooze,
             widgets::currency::fx_rates,
             widgets::gmail::gmail_signed_in, widgets::gmail::gmail_sign_in, widgets::gmail::gmail_sign_out,
-            widgets::gmail::gmail_inbox, widgets::gmail::gmail_open, widgets::gmail::gmail_open_web, widgets::gmail::gmail_app_passwords, widgets::gmail::gmail_watch,
+            widgets::gmail::gmail_inbox, widgets::gmail::gmail_open, widgets::gmail::gmail_open_web, widgets::gmail::gmail_open_link, widgets::gmail::gmail_app_passwords, widgets::gmail::gmail_watch,
             widgets::ai_usage::ai_limits,
             widgets::ai_usage::ai_daily,
             widgets::apps::app_pin_target, widgets::apps::app_browse, widgets::apps::apps_installed, widgets::apps::paths_exist,
