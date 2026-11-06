@@ -46,6 +46,8 @@ export interface BarCfg {
   gapInner?: number | null;
   /** A copy of the dock on every other monitor too. */
   allDisplays?: boolean;
+  /** Scrolling the dock wraps around without end. */
+  infiniteScroll?: boolean;
 }
 export type SideWidth = 'slim' | 'regular' | 'wide';
 export const SIDE_PX: Record<SideWidth, number> = { slim: 56, regular: 72, wide: 96 };
@@ -262,7 +264,6 @@ export const ipc = {
   thumbsShow: (items: { id: number; x: number; y: number; w: number; h: number }[]) => invoke<number[]>('thumbs_show', { items }),
   thumbsClear: () => invoke<void>('thumbs_clear'),
   /** Live window pictures drawn into this dock window (minimized-window spots); [] clears them. */
-  barThumbs: (items: { id: number; x: number; y: number; w: number; h: number }[]) => invoke<number[]>('bar_thumbs', { items }),
   barReveal: (show: boolean) => invoke<void>('bar_reveal', { show }),
   popupHide: () => invoke<void>('popup_hide'),
   popupReveal: () => invoke<void>('popup_reveal'),
@@ -402,6 +403,10 @@ export const ipc = {
   appActivate: (id: number) => invoke<void>('app_activate', { id }),
   appClose: (id: number) => invoke<void>('app_close', { id }),
   appLaunch: (path: string, args = '', aumid: string | null = null) => invoke<void>('app_launch', { path, args, aumid }),
+  /** Run as administrator (Windows asks first). Programs and shortcuts, not Store apps. */
+  appLaunchAdmin: (path: string, args = '') => invoke<void>('app_launch_admin', { path, args }),
+  /** Windows' UAC shield as PNG bytes, for menu items. */
+  shieldIcon: () => invoke<number[] | null>('shield_icon'),
   jumplist: (exe: string) => invoke<{ name: string; path: string }[]>('jumplist', { exe }),
   // audio
   audioState: () => invoke<AudioState>('audio_state'),
@@ -588,5 +593,5 @@ export const events = {
 export type { UnlistenFn };
 /** One enlarged dock icon, in the magnifier window's CSS px (x, y = top-left). */
 type CssRect = { x: number; y: number; w: number; h: number };
-export interface EffectTargets { effect: 'genie' | 'scale' | 'suck' | 'none'; toIcon: boolean; perWindow: Record<number, CssRect>; end: CssRect | null; dock: CssRect }
+export interface EffectTargets { effect: 'genie' | 'scale' | 'suck' | 'none'; perWindow: Record<number, CssRect>; dock: CssRect }
 export interface MagIcon { src: string; x: number; y: number; size: number }

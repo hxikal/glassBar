@@ -9,11 +9,13 @@
 //   main thread runs the menu; a Menu.new/close arriving then waits for that lock on the
 //   main thread, so the menu can never close and GlassBar hangs for good. This is why
 //   separators are '-' here rather than PredefinedMenuItem objects made by the caller.
-import { Menu, type MenuItemOptions } from '@tauri-apps/api/menu';
+import { Menu, type IconMenuItemOptions, type MenuItemOptions } from '@tauri-apps/api/menu';
 
-/** A plain item, a ticked item (`checked`), a submenu (`items`), or a separator ('-'). */
+/** A plain item, a ticked item (`checked`), one with an icon (`icon`: PNG bytes), a submenu
+ *  (`items`), or a separator ('-'). */
 export type Item =
   | (Omit<MenuItemOptions, 'id'> & { checked?: boolean })
+  | Omit<IconMenuItemOptions, 'id'>
   | { text: string; items: Item[]; enabled?: boolean }
   | '-';
 

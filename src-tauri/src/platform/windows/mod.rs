@@ -208,7 +208,8 @@ impl Shell for WinShell {
     fn activate(&self, id: isize) { windows_list::activate(id) }
     fn close(&self, id: isize) { windows_list::close(id) }
     fn launch(&self, path: &str, args: &str) -> Res<()> { windows_list::launch(path, args) }
-    fn launch_elevated(&self, path: &str, args: &str) -> Res<()> { windows_list::launch_elevated(path, args) }
+    fn launch_elevated(&self, path: &str, args: &str, visible: bool) -> Res<()> { windows_list::launch_elevated(path, args, visible) }
+    fn shield_icon(&self) -> Option<Vec<u8>> { windows_list::shield_png() }
     fn user_env(&self, name: &str) -> Option<(String, bool)> { userenv::get(false, name) }
     fn machine_env(&self, name: &str) -> Option<String> { userenv::get(true, name).map(|v| v.0) }
     fn set_user_env(&self, name: &str, value: &str, expand: bool) -> Res<()> { userenv::set(name, value, expand) }

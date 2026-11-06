@@ -27,10 +27,8 @@ export interface AppsSettings {
   magnifyScale?: number;
   /** Effect drawn when a window minimizes or is restored from the dock. */
   minimizeEffect?: 'genie' | 'scale' | 'suck' | 'none';
-  /** The icon bounces while its app starts. */
+  /** The icon bounces while its app starts (off by default, like the other dock effects). */
   bounce?: boolean;
-  /** Minimized windows fly into their app's icon; off = their own spot at the end. */
-  minimizeToIcon?: boolean;
 }
 
 export default defineWidget<AppsSettings>({
@@ -42,7 +40,7 @@ export default defineWidget<AppsSettings>({
   sizes: ['small', 'medium', 'large'],
   defaultSize: 'large',
   defaults: { pinned: [], showTitles: false, startPlacement: 'inline', searchStyle: 'icon', order: [], maxIcons: 0,
-    magnify: false, magnifyScale: 1.6, minimizeEffect: 'genie', bounce: true, minimizeToIcon: true },
+    magnify: false, magnifyScale: 1.6, minimizeEffect: 'none', bounce: false },
   Pill,
   SettingsForm,
 });

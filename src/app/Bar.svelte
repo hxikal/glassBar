@@ -1,7 +1,7 @@
 <script lang="ts">
   import { availableMonitors, getCurrentWindow, primaryMonitor } from '@tauri-apps/api/window';
   import { flip } from 'svelte/animate';
-  import { onMount } from 'svelte';
+  import { flushSync, onMount } from 'svelte';
   import { adhan, setAdhanPlaying, stopAdhan } from '../lib/adhan.svelte';
   import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Coffee, Droplet, Maximize2, MoonStar, Pause, Play, Plus, SkipForward, Square, Target, Timer as TimerIcon, PlugZap, Sun, Unplug, Volume2, VolumeX, X } from '@lucide/svelte';
   import { profile, store, update } from '../lib/config.svelte';
@@ -11,7 +11,7 @@
   import { FLASH } from './chargeFlash';
   import { ALERT_DEFAULTS, arrive, holdMs, viewOf, type AlertKind, type DockAlert } from './dockAlert';
   import { fmtWater } from '../widgets/water/units';
-  import { hiddenCounts, insertIndex, revealBy, snap } from '../lib/geometry';
+  import { hiddenCounts, insertIndex, revealBy, snap, unrotate, wrapDir } from '../lib/geometry';
   import { GALLERY, openPopup } from '../lib/popup';
   import { adhanOf, chargerTone, chime, deviceTone, playAdzan, shutter, tick } from '../lib/sound';
   import { showMenu } from '../lib/menu';
@@ -309,6 +309,7 @@
   $effect(() => {
     let v = 0, raf = 0;
     const step = () => {
+      loop();
       if (vertical) scroller.scrollTop += v; else scroller.scrollLeft += v;
       v *= 0.86;
       raf = Math.abs(v) > 0.3 ? requestAnimationFrame(step) : 0;
@@ -331,19 +332,58 @@
     measureRaf = requestAnimationFrame(() => {
       if (!scroller) return;
       const slots = [...scroller.querySelectorAll<HTMLElement>(':scope > .slot')].map((s) => s.getBoundingClientRect());
-      const next = hiddenCounts(slots, scroller.getBoundingClientRect(), vertical);
+      const next = infinite ? { before: 0, after: 0 } : hiddenCounts(slots, scroller.getBoundingClientRect(), vertical);
       if (next.before !== more.before || next.after !== more.after) more = next;
     });
   }
   $effect(() => {
-    shown.length; vertical; // re-measure when widgets or the edge change
+    shown.length; vertical; infinite; // re-measure when widgets, the edge or the setting change
     measure();
-    const ro = new ResizeObserver(() => { measure(); revealSoon(); });
+    // Its first call (right after observe) also sets up infinite scroll.
+    const ro = new ResizeObserver(() => { measure(); revealSoon(); loop(); });
     ro.observe(scroller);
     for (const s of scroller.children) ro.observe(s);
     scroller.addEventListener('scroll', measure, { passive: true });
-    return () => { ro.disconnect(); scroller.removeEventListener('scroll', measure); cancelAnimationFrame(measureRaf); clearTimeout(revealTimer); };
+    // Not on every scroll: moving the scroll position would cut a smooth scroll short.
+    scroller.addEventListener('scrollend', loop, { passive: true });
+    return () => { ro.disconnect(); scroller.removeEventListener('scroll', measure); scroller.removeEventListener('scrollend', loop); cancelAnimationFrame(measureRaf); clearTimeout(revealTimer); };
   });
+
+  // ---- Infinite scroll (bar settings): the row goes round, after the last widget the first
+  // comes again. No copies of the widgets (their live timers and charts would run twice): the
+  // end widget that is out of view is carried to the other end with CSS `order` (the DOM and
+  // the saved order stay as they are), and the scroll position moves by just as much, so
+  // nothing on screen shifts. Done before every programmatic scroll step and when a scroll ends,
+  // keeping the view mid-row so there is always more on both sides.
+  // ponytail: one copy of each widget, so a row that overflows by less than the widget to
+  // carry round stops at its end like a normal dock; a second copy would fix that.
+  const infinite = $derived(!!bar.infiniteScroll);
+  /** How many widgets from the front have been carried to the end. */
+  let rot = $state(0);
+  const turn = $derived(infinite && shown.length ? rot % shown.length : 0);
+  function loop() {
+    const n = shown.length;
+    if (!scroller || !infinite) { rot = 0; return; }
+    const [view, full] = vertical ? [scroller.clientHeight, scroller.scrollHeight] : [scroller.clientWidth, scroller.scrollWidth];
+    if (n < 2 || full - view < 1) { rot = 0; return; } // everything fits: the saved order, centred
+    const gap = parseFloat(getComputedStyle(scroller).gap) || 0;
+    const size = (el: HTMLElement) => (vertical ? el.offsetHeight : el.offsetWidth) + gap;
+    const side = vertical ? 'top' : 'left';
+    for (let k = 0; k < n; k++) {
+      const els = [...scroller.querySelectorAll<HTMLElement>(':scope > .slot')]; // the saved order
+      if (els.length !== n) return;
+      const t = turn;
+      const before = vertical ? scroller.scrollTop : scroller.scrollLeft;
+      const d = wrapDir(before, full - view - before, size(els[t]), size(els[(t + n - 1) % n]));
+      if (!d) return;
+      const keep = els[d > 0 ? (t + 1) % n : t]; // a widget that stays in view
+      const at = keep.getBoundingClientRect()[side];
+      rot = (t + d + n) % n;
+      flushSync();
+      const by = keep.getBoundingClientRect()[side] - at;
+      if (vertical) scroller.scrollTop += by; else scroller.scrollLeft += by;
+    }
+  }
 
   // ---- Dragging past the visible part of the dock -- a widget being moved, or an app icon
   // on its way to a folder: holding it near either end scrolls the dock that way (faster the
@@ -355,6 +395,7 @@
     const dragging = () => !!document.documentElement.dataset.appDrag || dragId !== null;
     const step = () => {
       if (!dragging() || !v) { raf = 0; return; }
+      loop();
       const before = vertical ? scroller.scrollTop : scroller.scrollLeft;
       if (vertical) scroller.scrollTop += v; else scroller.scrollLeft += v;
       const moved = (vertical ? scroller.scrollTop : scroller.scrollLeft) !== before;
@@ -489,14 +530,17 @@
       const p = vertical ? last.clientY : last.clientX;
       const [lo, hi] = vertical ? [box.top, box.bottom] : [box.left, box.right];
       const speed = p < lo + EDGE ? -Math.ceil((lo + EDGE - p) / 4) : p > hi - EDGE ? Math.ceil((p - (hi - EDGE)) / 4) : 0;
-      if (speed) { if (vertical) scroller.scrollTop += speed; else scroller.scrollLeft += speed; }
+      if (speed) { loop(); if (vertical) scroller.scrollTop += speed; else scroller.scrollLeft += speed; }
       // The pointer decides (it goes where you point), in the scroller's layout coordinates.
       const centre = p - (vertical ? box.top : box.left) + (vertical ? scroller.scrollTop : scroller.scrollLeft);
-      const others = [...scroller.querySelectorAll<HTMLElement>(':scope > .slot:not(.placeholder)')]
-        .map((s) => (vertical ? s.offsetTop + s.offsetHeight / 2 : s.offsetLeft + s.offsetWidth / 2));
-      const to = insertIndex(others, centre);
+      // The others in the order they show (infinite scroll may have carried some round).
       const rest = order.filter((id) => id !== instance);
-      const next = [...rest.slice(0, to), instance, ...rest.slice(to)];
+      const others = [...scroller.querySelectorAll<HTMLElement>(':scope > .slot:not(.placeholder)')]
+        .map((s, i) => ({ id: rest[i], c: vertical ? s.offsetTop + s.offsetHeight / 2 : s.offsetLeft + s.offsetWidth / 2 }))
+        .sort((a, b) => a.c - b.c);
+      const seen = others.map((o) => o.id);
+      seen.splice(insertIndex(others.map((o) => o.c), centre), 0, instance);
+      const next = unrotate(seen, turn);
       if (next.join() !== order.join()) order = next;
       if (speed) raf = requestAnimationFrame(frame); // keep scrolling while held at an edge
     };
@@ -560,7 +604,7 @@
 
   <div class="scrollbox">
   <div class="scroller" bind:this={scroller} class:fade-before={more.before > 0} class:fade-after={more.after > 0}>
-    {#each shown as w (w.instance)}
+    {#each shown as w, i (w.instance)}
       {@const m = widgets[w.id]}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div
@@ -568,6 +612,7 @@
         class:placeholder={dragId === w.instance}
         style:width={dragId === w.instance && ghost && !vertical ? `${ghost.w}px` : null}
         style:height={dragId === w.instance && ghost && vertical ? `${ghost.h}px` : null}
+        style:order={turn ? (i - turn + shown.length) % shown.length : null}
         class:dimmed={focusDim && !edit && w.id !== 'productivity'}
         role="button"
         tabindex="-1"

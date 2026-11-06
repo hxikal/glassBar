@@ -101,3 +101,11 @@ pub async fn app_launch(path: String, args: String, aumid: Option<String>) -> Re
         None => shell().launch(&path, &args),
     }).await?
 }
+/// "Run as administrator": Windows asks first (UAC). Programs and shortcuts only.
+#[tauri::command]
+pub async fn app_launch_admin(path: String, args: String) -> Res<()> {
+    blocking(move || shell().launch_elevated(&path, &args, true)).await?
+}
+/// The UAC shield for the menu item above (PNG bytes).
+#[tauri::command]
+pub fn shield_icon() -> Option<Vec<u8>> { shell().shield_icon() }

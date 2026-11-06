@@ -78,3 +78,21 @@ export function revealBy(item: { left: number; right: number; top: number; botto
   if (a < va + margin) return a - (va + margin);
   return 0;
 }
+
+/**
+ * Infinite scroll: which end widget to carry round to the other end, so the view stays mid-row
+ * and there is always more to scroll to. `before`/`after`: px of row hidden on each side;
+ * `first`/`last`: the end widgets' size plus the gap. 1 = the first goes to the end, -1 = the
+ * last to the front, 0 = leave it. Only moves a widget that is wholly out of view.
+ */
+export function wrapDir(before: number, after: number, first: number, last: number): -1 | 0 | 1 {
+  if (before - after > first) return 1;
+  if (after - before > last) return -1;
+  return 0;
+}
+
+/** Infinite scroll: the row as seen (the saved order turned by `turn`) back to the saved order. */
+export function unrotate<T>(seen: T[], turn: number): T[] {
+  const k = seen.length - turn;
+  return turn ? [...seen.slice(k), ...seen.slice(0, k)] : seen;
+}

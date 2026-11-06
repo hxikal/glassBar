@@ -13,8 +13,10 @@ export async function initPerf() {
     .then((s) => { Object.assign(perf, s); root.dataset.perf = s.mode; })
     .catch(() => {});
   root.dataset.perf = perf.mode;
+  // Listen first: a change between the first read and the listener was lost for good (the
+  // dock, which loads while GlassBar starts, stayed in Normal while the app was in Low).
+  await events.changed('perf', load).catch(() => {});
   await load();
-  events.changed('perf', load).catch(() => {});
   if (root.dataset.window === 'bar') {
     const setAway = (away: boolean) => { barAway.v = away; if (away) root.dataset.away = ''; else delete root.dataset.away; };
     events.barAway(setAway).catch(() => {});

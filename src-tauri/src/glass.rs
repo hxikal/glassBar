@@ -26,20 +26,33 @@ fn is_glass(label: &str) -> bool { label == "bar" || label.starts_with("bar-") |
 fn overlaps(a: Rect, b: Rect) -> bool { a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h }
 pub fn nudge() { NUDGE.store(true, Ordering::Relaxed); }
 
-/// Picture `area` (physical px) for window `label`, leaving out every visible glass window
-/// over it. True when the picture differs from the last one.
+/// Picture `area` (physical px) for window `label`, leaving out every glass window over it
+/// (hidden ones too: one shown between this list and the capture got pictured, at start).
+/// True when the picture differs from the last one.
 pub fn take(app: &AppHandle, label: &str, area: Rect) -> bool {
-    let hide: Vec<HWND> = app.webview_windows().into_iter()
-        .filter(|(l, w)| is_glass(l) && w.is_visible().unwrap_or(false) && crate::magnify::rect_of(w).is_some_and(|r| overlaps(r, area)))
-        .filter_map(|(_, w)| w.hwnd().ok()).map(|h| HWND(h.0)).collect();
-    let shot = unsafe {
-        for h in &hide { let _ = SetWindowDisplayAffinity(*h, WDA_EXCLUDEFROMCAPTURE); }
-        // The exclusion takes effect with the next frame Windows composes.
-        if !hide.is_empty() { let _ = DwmFlush(); let _ = DwmFlush(); }
-        let s = screen().capture_rect(area.x, area.y, area.w, area.h);
-        for h in &hide { let _ = SetWindowDisplayAffinity(*h, WDA_NONE); }
-        s
-    };
+    let glass: Vec<(HWND, Rect, bool)> = app.webview_windows().into_iter()
+        .filter(|(l, _)| is_glass(l))
+        .filter_map(|(_, w)| Some((HWND(w.hwnd().ok()?.0), crate::magnify::rect_of(&w).filter(|r| overlaps(*r, area))?, w.is_visible().unwrap_or(false))))
+        .collect();
+    // The screen as it is, glass and all. A picture that looks like it inside a shown glass
+    // window caught that window too: Windows hadn't applied the exclusion yet (it lags when
+    // busy), and the dock then showed its own old content through its glass, behind its
+    // widgets. Try once more a little later, else keep the old picture.
+    let with = if glass.is_empty() { None } else { screen().capture_rect(area.x, area.y, area.w, area.h) };
+    let mut shot = None;
+    for extra_ms in [0, 60] {
+        let s = unsafe {
+            for (h, _, _) in &glass { let _ = SetWindowDisplayAffinity(*h, WDA_EXCLUDEFROMCAPTURE); }
+            // The exclusion takes effect with the next frame Windows composes.
+            if !glass.is_empty() { let _ = DwmFlush(); let _ = DwmFlush(); }
+            std::thread::sleep(Duration::from_millis(extra_ms));
+            let s = screen().capture_rect(area.x, area.y, area.w, area.h);
+            for (h, _, _) in &glass { let _ = SetWindowDisplayAffinity(*h, WDA_NONE); }
+            s
+        };
+        let caught = matches!((&s, &with), (Some(s), Some(w)) if glass.iter().any(|(_, r, shown)| *shown && alike(&s.bgra, &w.bgra, area, *r)));
+        if !caught { shot = s; break; }
+    }
     let Some(s) = shot else { return false };
     let sum = checksum(&s.bgra);
     let mut g = PICS.lock().unwrap();
@@ -102,6 +115,24 @@ pub fn watch(app: &AppHandle) {
     }).ok();
 }
 
+/// Do two pictures of `area` look the same inside `r` (a glass window's part of it)? Mean
+/// RGB difference over a sample of pixels: measured 46 between the dock and what is behind
+/// it, 0.3 between two pictures that both have the dock in them.
+fn alike(a: &[u8], b: &[u8], area: Rect, r: Rect) -> bool {
+    let (x0, x1) = ((r.x - area.x).max(0), (r.x + r.w - area.x).min(area.w));
+    let (y0, y1) = ((r.y - area.y).max(0), (r.y + r.h - area.y).min(area.h));
+    let (mut sum, mut n) = (0u64, 0u64);
+    for y in (y0..y1).step_by(3) {
+        for x in (x0..x1).step_by(7) {
+            let i = ((y * area.w + x) * 4) as usize;
+            let (Some(p), Some(q)) = (a.get(i..i + 3), b.get(i..i + 3)) else { continue };
+            sum += p.iter().zip(q).map(|(u, v)| u.abs_diff(*v) as u64).sum::<u64>();
+            n += 3;
+        }
+    }
+    n > 0 && sum < 8 * n
+}
+
 /// Cheap change check: every 61st pixel.
 fn checksum(bgra: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
@@ -155,6 +186,19 @@ mod tests {
         assert_eq!(u32::from_le_bytes(b[2..6].try_into().unwrap()) as usize, b.len());
         assert_eq!(i32::from_le_bytes(b[22..26].try_into().unwrap()), -2); // top-down
         assert_eq!(b.len(), 54 + 24);
+    }
+    #[test]
+    fn a_picture_that_caught_the_dock_is_told_apart() {
+        let area = Rect { x: 100, y: 0, w: 40, h: 12 };
+        let dock = Rect { x: 110, y: 0, w: 20, h: 12 }; // the middle half of the strip
+        let screen = vec![200u8; 40 * 12 * 4];
+        let mut behind = screen.clone();
+        for y in 0..12 { for x in 10..30 { let i = (y * 40 + x) * 4; behind[i..i + 3].copy_from_slice(&[20, 40, 60]); } }
+        assert!(!alike(&behind, &screen, area, dock)); // the exclusion worked
+        let mut noisy = screen.clone();
+        noisy[(5 * 40 + 14) * 4] = 190; // a frame of animation apart
+        assert!(alike(&noisy, &screen, area, dock)); // it didn't: the dock is in the picture
+        assert!(alike(&behind, &screen, area, Rect { x: 0, y: 0, w: 105, h: 12 })); // outside the dock they match anyway
     }
     #[test]
     fn checksum_sees_a_change() {

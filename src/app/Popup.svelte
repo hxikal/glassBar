@@ -62,11 +62,18 @@
     if (!content || !surface || !instance) return;
     const cs = getComputedStyle(surface);
     const chrome = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce((s, k) => s + parseFloat(cs[k as any] as string), 0);
+    const sides = parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
     const fit = () => {
       // The exact (fractional) height, rounded up: offsetHeight rounds, and a panel a fraction
       // too short shows a scrollbar, which reflows it, which removes the scrollbar (a jiggle).
       // The computed height, unlike the on-screen box, ignores the opening scale animation.
       const h = Math.ceil(parseFloat(getComputedStyle(content!).height) + chrome);
+      // While a scrollbar shows, the content is narrower than it will be without one, so its
+      // height is off (a screenshot thumbnail gets shorter, text gets taller). Shrinking to that
+      // removed the scrollbar, which changed the height back: the window flipped between two
+      // sizes every frame and the card looked doubled. So only grow then; once the scrollbar
+      // is gone the content widens, this runs again and measures it true.
+      if (h < lastFit && surface!.offsetWidth - surface!.clientWidth > sides + 4) return;
       if (Math.abs(h - lastFit) > 1) { lastFit = h; ipc.popupFit(h); }
     };
     refit = () => { lastFit = 0; fit(); };

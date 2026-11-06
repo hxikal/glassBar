@@ -53,6 +53,8 @@ pub struct BarCfg {
     pub gap_inner: Option<f64>,
     /// A copy of the dock on every other monitor too (`monitor` still picks the main one).
     pub all_displays: bool,
+    /// Scrolling the dock wraps around: after the last widget the first comes again.
+    pub infinite_scroll: bool,
 }
 
 impl BarCfg {
@@ -70,7 +72,7 @@ impl Default for BarCfg {
         // Fresh install: GlassBar replaces the Windows taskbar. Quit, a crash or the tray's
         // "Restore Windows taskbar" bring it back.
         Self { edge: Edge::Top, monitor: None, length: 0.7, size: BarSize::Normal, floating: None,
-               reserve_space: true, native_taskbar: TaskbarMode::Hidden, auto_hide: false, side_width: "regular".into(), gap: 6.0, gap_inner: None, all_displays: false }
+               reserve_space: true, native_taskbar: TaskbarMode::Hidden, auto_hide: false, side_width: "regular".into(), gap: 6.0, gap_inner: None, all_displays: false, infinite_scroll: false }
     }
 }
 
@@ -297,7 +299,8 @@ impl Default for Config {
 /// v3 folded the Disk widget into the System Monitor; v4 the Tray widget into Quick Settings.
 /// v10: opacity became "how solid the dock is" on top of the Windows material (it was the
 /// acrylic tint, which Windows 11 ignores): 0 keeps the old native look.
-pub const CURRENT_VERSION: u32 = 12;
+/// v13: App Launcher dock effects off by default (older launchers keep theirs).
+pub const CURRENT_VERSION: u32 = 13;
 
 /// Migration helper: widget `from` became part of widget `into`. Its settings (mapped by
 /// `map`) are merged into the existing `into` widget, or it turns into one in place.
@@ -457,6 +460,20 @@ impl Config {
             // The Companion widget was removed.
             for p in self.profiles.values_mut() { p.widgets.retain(|w| w.id != "companion"); }
         }
+        if self.version < 13 {
+            // Dock effects are now off by default. App Launchers from before keep the old
+            // defaults (Genie, bounce) unless they chose otherwise; "Minimize windows into
+            // application icon" was removed (they always go into their icon).
+            for p in self.profiles.values_mut() {
+                for w in p.widgets.iter_mut().filter(|w| w.id == "apps") {
+                    if !w.settings.is_object() { w.settings = serde_json::json!({}); }
+                    let s = w.settings.as_object_mut().unwrap();
+                    s.entry("minimizeEffect").or_insert("genie".into());
+                    s.entry("bounce").or_insert(true.into());
+                    s.remove("minimizeToIcon");
+                }
+            }
+        }
         self.version = CURRENT_VERSION;
         if self.profiles.is_empty() {
             self.profiles.insert("Default".into(), Profile::default());
@@ -537,6 +554,13 @@ mod tests {
     fn performance_defaults_to_normal_manual() {
         let c: Config = serde_json::from_str(r#"{"version":11}"#).unwrap();
         assert_eq!(c.performance, Performance { mode: PerfMode::Normal, auto: false, never_touch: vec![] });
+    }
+
+    #[test]
+    fn infinite_scroll_is_off_in_old_configs() {
+        let b: BarCfg = serde_json::from_str(r#"{"edge":"bottom","autoHide":true}"#).unwrap();
+        assert!(!b.infinite_scroll);
+        assert!(serde_json::to_string(&BarCfg { infinite_scroll: true, ..b }).unwrap().contains(r#""infiniteScroll":true"#));
     }
 
     #[test]
@@ -794,6 +818,24 @@ mod tests {
         c.profiles.get_mut("Default").unwrap().widgets = vec![w("music"), w("ai"), w("aiusage"), w("clock")];
         let ids: Vec<String> = c.normalized().profiles["Default"].widgets.iter().map(|w| w.id.clone()).collect();
         assert_eq!(ids, vec!["music", "clock"]);
+    }
+
+    #[test]
+    fn v13_keeps_old_app_launchers_effects_and_drops_minimize_to_icon() {
+        let apps = |s: serde_json::Value| WidgetInst { id: "apps".into(), instance: "apps-1".into(), size: "large".into(), settings: s, enabled: true };
+        let mut c = Config::default();
+        c.version = 12;
+        c.profiles.get_mut("Default").unwrap().widgets = vec![apps(serde_json::Value::Null)];
+        let s = c.normalized().profiles["Default"].widgets[0].settings.clone();
+        assert_eq!(s, serde_json::json!({ "minimizeEffect": "genie", "bounce": true }));
+        // What a user chose stays; the removed option goes.
+        let mut c = Config::default();
+        c.version = 12;
+        c.profiles.get_mut("Default").unwrap().widgets = vec![apps(serde_json::json!({ "minimizeEffect": "none", "bounce": false, "minimizeToIcon": false, "magnify": true }))];
+        let s = c.normalized().profiles["Default"].widgets[0].settings.clone();
+        assert_eq!(s, serde_json::json!({ "minimizeEffect": "none", "bounce": false, "magnify": true }));
+        // A new install has nothing to keep: the widget's own defaults (off) apply.
+        assert!(Config::default().normalized().profiles["Default"].widgets.iter().all(|w| w.settings.get("minimizeEffect").is_none()));
     }
 
     #[test]
